@@ -23,9 +23,28 @@
    python main.py
    ```
 
-## Test Without Audio
+## Testing Options
 
-### Option 1: Test API Endpoints Only
+### Option 1: Stream WAV File (RECOMMENDED FOR DEMO - No FFmpeg!)
+
+Perfect for your 20-minute podcast demo:
+
+```bash
+python test_wav_stream.py
+```
+
+**Requirements:**
+- WAV file at: `test_data/audio.wav`
+- No FFmpeg needed!
+
+This will:
+- ✓ Stream your WAV file in real-time chunks
+- ✓ Display live transcriptions
+- ✓ Trigger topic detection
+- ✓ Queue fact checks
+- ✓ Simulate a live 20-minute podcast
+
+### Option 2: Test API Endpoints Only
 
 ```bash
 python test_client.py
@@ -34,22 +53,20 @@ python test_client.py
 This will:
 - ✓ Test REST API endpoints (/stats, /topics, /facts)
 - ✓ Verify server is running
+- ✗ Does NOT stream audio
 
-### Option 2: Test with Real Audio Stream
+### Option 3: Stream with FFmpeg (MP3/Live URLs)
 
-**Requires FFmpeg** (already cloned at C:\Users\loizi\PycharmProjects\ffmpeg)
+**Requires FFmpeg installation**
 
 ```bash
 python test_audio_client.py
 ```
 
-This will:
-- ✓ Stream audio from BBC World Service (or local file)
-- ✓ Convert to linear16 PCM format using FFmpeg
-- ✓ Send to Deepgram for transcription
-- ✓ Display real-time transcriptions
-- ✓ Trigger topic detection
-- ✓ Queue fact checks
+Use this for:
+- MP3 or other non-WAV formats
+- Live streaming URLs (BBC World Service)
+- Any format that needs conversion
 
 ## View Results
 

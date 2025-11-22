@@ -240,12 +240,25 @@ AUDIO_SOURCE = "http://stream.live.vc.bbcmedia.co.uk/bbc_world_service"
 
 This will stream BBC World Service live radio - always has speech, great for demos!
 
-## Summary
+## Demo Options
 
-1. ✅ Place WAV or MP3 in `test_audio/podcast_sample.wav` (or `.mp3`)
+### Option A: WAV File Streaming (RECOMMENDED - No FFmpeg!)
+
+Perfect for your 20-minute podcast demo:
+
+1. ✅ Place WAV file at: `test_data/audio.wav`
 2. ✅ Start server: `python main.py`
-3. ✅ Run demo: `python test_audio_client.py`
+3. ✅ Run demo: `python test_wav_stream.py`
 4. ✅ Watch real-time transcription + topic + fact-checking
 5. ✅ Show results: `http://localhost:8000/topics` and `/facts`
+
+**See:** `WAV_STREAMING_GUIDE.md` for details
+
+### Option B: With FFmpeg (MP3/Other Formats)
+
+1. ✅ Install FFmpeg (see `FFMPEG_INSTALLATION.md`)
+2. ✅ Place file in: `test_audio/podcast_sample.mp3`
+3. ✅ Start server: `python main.py`
+4. ✅ Run demo: `python test_audio_client.py`
 
 You're ready for the hackathon demo! 🎉

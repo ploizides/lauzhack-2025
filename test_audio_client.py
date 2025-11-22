@@ -10,20 +10,25 @@ import websockets
 from pathlib import Path
 
 
-# FFmpeg path - adjust if needed
-FFMPEG_PATH = r"C:\Users\loizi\PycharmProjects\ffmpeg\bin\ffmpeg.exe"
+# FFmpeg path - UPDATE THIS to point to your ffmpeg.exe
+# Download from: https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip
+# Extract and point to ffmpeg.exe location
+FFMPEG_PATH = r"C:\ffmpeg\bin\ffmpeg.exe"  # Update this path!
+
+# Alternative: If you have ffmpeg in PATH, you can use just "ffmpeg"
+# FFMPEG_PATH = "ffmpeg"
 
 # Test audio source options:
 
 # Option 1: Local audio file (recommended for demo)
 # Place your podcast file (MP3, WAV, etc.) in the 'test_audio' folder
-AUDIO_SOURCE = r"C:\Users\loizi\PycharmProjects\lauzhack-2025\test_audio\podcast_sample.wav"
+# AUDIO_SOURCE = r"C:\Users\loizi\PycharmProjects\lauzhack-2025\test_audio\podcast_sample.wav"
 
 # Option 2: Use MP3 instead
 # AUDIO_SOURCE = r"C:\Users\loizi\PycharmProjects\lauzhack-2025\test_audio\podcast_sample.mp3"
 
 # Option 3: BBC World Service live stream (for real-time testing)
-# AUDIO_SOURCE = "http://stream.live.vc.bbcmedia.co.uk/bbc_world_service"
+AUDIO_SOURCE = "http://stream.live.vc.bbcmedia.co.uk/bbc_world_service"
 
 # Option 4: Any other local audio file (MP3, WAV, M4A, AAC, FLAC, OGG, etc.)
 # AUDIO_SOURCE = r"C:\path\to\your\audio.wav"
@@ -213,10 +218,22 @@ async def main():
     print()
 
     # Check if FFmpeg exists
-    if not Path(FFMPEG_PATH).exists():
+    ffmpeg_path = Path(FFMPEG_PATH)
+    if not ffmpeg_path.exists() and FFMPEG_PATH != "ffmpeg":
         print(f"❌ FFmpeg not found at: {FFMPEG_PATH}")
-        print("\nPlease update FFMPEG_PATH in the script to point to ffmpeg.exe")
-        print("Current path:", FFMPEG_PATH)
+        print("\n" + "=" * 50)
+        print("FFmpeg Installation Required")
+        print("=" * 50)
+        print("\nOption 1: Download FFmpeg (Recommended)")
+        print("  1. Download: https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip")
+        print("  2. Extract to C:\\ffmpeg")
+        print("  3. Verify ffmpeg.exe is at: C:\\ffmpeg\\bin\\ffmpeg.exe")
+        print("\nOption 2: Use Chocolatey (if installed)")
+        print("  choco install ffmpeg")
+        print("\nOption 3: Update FFMPEG_PATH in test_audio_client.py")
+        print(f"  Current: {FFMPEG_PATH}")
+        print("  Change to your ffmpeg.exe location")
+        print("\n" + "=" * 50)
         return
 
     print(f"✓ FFmpeg found")
