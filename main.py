@@ -134,10 +134,12 @@ async def websocket_endpoint(websocket: WebSocket):
         deepgram = AsyncDeepgramClient(api_key=settings.deepgram_api_key)
 
         # Connect to Deepgram v2 using async context manager
+        # Documentation: https://developers.deepgram.com/docs/flux/quickstart
+        # Valid parameters: model, encoding, sample_rate, eot_threshold, eager_eot_threshold, eot_timeout_ms
         async with deepgram.listen.v2.connect(
-            model="nova-2",
-            encoding="linear16",
-            sample_rate="16000"
+            model="flux-general-en",  # Flux model for real-time streaming
+            encoding="linear16",  # PCM 16-bit audio
+            sample_rate="48000",  # Match WAV file (48kHz)
         ) as dg_connection:
 
             # Event handlers for Deepgram
@@ -248,7 +250,9 @@ async def websocket_endpoint(websocket: WebSocket):
 
     except Exception as e:
         logger.error(f"Failed to initialize Deepgram: {e}")
-        await websocket.close(code=1011, reason=str(e))
+        # Truncate error message to fit WebSocket control frame limit (max 123 bytes)
+        error_msg = str(e)[:100]
+        await websocket.close(code=1011, reason=error_msg)
 
 
 async def update_topics_async(websocket: WebSocket, text: str):
