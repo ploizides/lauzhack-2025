@@ -31,9 +31,18 @@ SAMPLE_CONVERSATION = [
 
 async def test_transcript_simulation():
     """
-    Simulate a podcast by sending text transcripts to the server.
-    This is useful for testing without actual audio.
+    NOTE: This test is currently disabled because the /listen endpoint
+    expects binary audio data (PCM), not JSON text.
+
+    Use test_audio_client.py instead for proper audio streaming tests.
     """
+    print("⚠️  TEXT-BASED TESTING NOT SUPPORTED")
+    print("The /listen endpoint requires binary audio data (linear16 PCM).")
+    print("\nPlease use: python test_audio_client.py")
+    print("This will stream real audio using FFmpeg.\n")
+    return
+
+    # Original code disabled
     uri = "ws://localhost:8000/listen"
 
     print(f"Connecting to {uri}...")

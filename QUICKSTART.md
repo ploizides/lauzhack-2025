@@ -25,15 +25,29 @@
 
 ## Test Without Audio
 
-Run the test client to simulate a podcast conversation:
+### Option 1: Test API Endpoints Only
 
 ```bash
 python test_client.py
 ```
 
 This will:
-- ✓ Test API endpoints
-- ✓ Simulate transcript events
+- ✓ Test REST API endpoints (/stats, /topics, /facts)
+- ✓ Verify server is running
+
+### Option 2: Test with Real Audio Stream
+
+**Requires FFmpeg** (already cloned at C:\Users\loizi\PycharmProjects\ffmpeg)
+
+```bash
+python test_audio_client.py
+```
+
+This will:
+- ✓ Stream audio from BBC World Service (or local file)
+- ✓ Convert to linear16 PCM format using FFmpeg
+- ✓ Send to Deepgram for transcription
+- ✓ Display real-time transcriptions
 - ✓ Trigger topic detection
 - ✓ Queue fact checks
 
