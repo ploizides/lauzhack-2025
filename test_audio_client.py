@@ -13,11 +13,20 @@ from pathlib import Path
 # FFmpeg path - adjust if needed
 FFMPEG_PATH = r"C:\Users\loizi\PycharmProjects\ffmpeg\bin\ffmpeg.exe"
 
-# Test audio source - using BBC World Service live stream
-AUDIO_SOURCE = "http://stream.live.vc.bbcmedia.co.uk/bbc_world_service"
+# Test audio source options:
 
-# Or use a local file:
-# AUDIO_SOURCE = "path/to/your/audio.mp3"
+# Option 1: Local audio file (recommended for demo)
+# Place your podcast file (MP3, WAV, etc.) in the 'test_audio' folder
+AUDIO_SOURCE = r"C:\Users\loizi\PycharmProjects\lauzhack-2025\test_audio\podcast_sample.wav"
+
+# Option 2: Use MP3 instead
+# AUDIO_SOURCE = r"C:\Users\loizi\PycharmProjects\lauzhack-2025\test_audio\podcast_sample.mp3"
+
+# Option 3: BBC World Service live stream (for real-time testing)
+# AUDIO_SOURCE = "http://stream.live.vc.bbcmedia.co.uk/bbc_world_service"
+
+# Option 4: Any other local audio file (MP3, WAV, M4A, AAC, FLAC, OGG, etc.)
+# AUDIO_SOURCE = r"C:\path\to\your\audio.wav"
 
 
 async def stream_audio_to_deepgram():
@@ -27,12 +36,29 @@ async def stream_audio_to_deepgram():
     """
     uri = "ws://localhost:8000/listen"
 
-    print(f"Connecting to {uri}...")
+    # Check if source is a file
+    is_file = not AUDIO_SOURCE.startswith("http://") and not AUDIO_SOURCE.startswith("https://")
+
+    if is_file:
+        source_path = Path(AUDIO_SOURCE)
+        if not source_path.exists():
+            print(f"❌ Audio file not found: {AUDIO_SOURCE}")
+            print(f"\nPlease:")
+            print(f"1. Create folder: test_audio")
+            print(f"2. Place your MP3 file there as: podcast_sample.mp3")
+            print(f"   OR update AUDIO_SOURCE in the script")
+            return
+
+        print(f"📁 Audio file: {source_path.name}")
+        print(f"   Size: {source_path.stat().st_size / 1024 / 1024:.2f} MB")
+    else:
+        print(f"🌐 Streaming from: {AUDIO_SOURCE}")
+
+    print(f"\nConnecting to {uri}...")
 
     try:
         async with websockets.connect(uri) as websocket:
             print("✓ Connected to server")
-            print(f"Starting audio stream from: {AUDIO_SOURCE}")
 
             # FFmpeg command to convert audio to linear16 PCM
             ffmpeg_cmd = [
@@ -193,21 +219,11 @@ async def main():
         print("Current path:", FFMPEG_PATH)
         return
 
-    print(f"✓ FFmpeg found at: {FFMPEG_PATH}")
+    print(f"✓ FFmpeg found")
     print()
 
-    # Choose test mode
-    print("Select test mode:")
-    print("1. Stream from BBC World Service (live audio)")
-    print("2. Generate test tone (no transcription expected)")
-    print()
-
-    choice = input("Enter choice (1 or 2, default=1): ").strip() or "1"
-
-    if choice == "2":
-        await test_with_sample_audio()
-    else:
-        await stream_audio_to_deepgram()
+    # Stream the configured audio source
+    await stream_audio_to_deepgram()
 
 
 if __name__ == "__main__":
