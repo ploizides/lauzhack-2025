@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Podcast AI Assistant - Real-Time Fact-Check</title>
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Fredoka', sans-serif;
+            background: #FFF;
+            overflow: hidden;
+            height: 100vh;
+        }
+
+        .container {
+            max-width: 1440px;
+            height: 100vh;
+            margin: 0 auto;
+            padding: 10px;
+            display: grid;
+            grid-template-rows: auto 1fr auto;
+            gap: 10px;
+        }
+
+        /* Top Section - Topic Timeline */
+        .timeline-section {
+            background: rgba(243, 249, 239, 0.9);
+            border-radius: 40px;
+            padding: 20px 25px;
+            height: 240px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .timeline-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #B1B1B1;
+        }
+
+        .timeline-title {
+            color: #2D571A;
+            font-size: 24px;
+            font-weight: 600;
+        }
+
+        .control-buttons {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn {
+            padding: 8px 20px;
+            border-radius: 8px;
+            border: none;
+            font-family: 'Fredoka', sans-serif;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-start {
+            background: #448127;
+            color: white;
+        }
+
+        .btn-start:hover {
+            background: #2D571A;
+        }
+
+        .btn-stop {
+            background: #C43030;
+            color: white;
+        }
+
+        .btn-stop:hover {
+            background: #8F0A0A;
+        }
+
+        .btn:disabled {
+            background: #D9D9D9;
+            cursor: not-allowed;
+        }
+
+        .timeline-content {
+            flex: 1;
+            overflow-x: auto;
+            overflow-y: hidden;
+            padding: 10px 0;
+        }
+
+        .timeline-scroll {
+            display: flex;
+            gap: 15px;
+            min-width: min-content;
+            align-items: center;
+            height: 100%;
+        }
+
+        .topic-badge {
+            background: #2D571A;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 12px;
+            white-space: nowrap;
+            font-size: 18px;
+            cursor: pointer;
+            transition: transform 0.2s;
+            flex-shrink: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .topic-badge:hover {
+            transform: scale(1.05);
+        }
+
+        .topic-badge.active {
+            background: #448127;
+            box-shadow: 0 0 10px rgba(68, 129, 39, 0.5);
+        }
+
+        .topic-timestamp {
+            font-size: 12px;
+            color: #8F0A0A;
+            margin-top: 5px;
+        }
+
+        .topic-arrow {
+            color: #B1B1B1;
+            font-size: 24px;
+            flex-shrink: 0;
+        }
+
+        .progress-bar-container {
+            margin-top: 15px;
+            background: #D9D9D9;
+            height: 14px;
+            border-radius: 11px;
+            overflow: hidden;
+        }
+
+        .progress-bar-fill {
+            height: 100%;
+            background: #A5A5A5;
+            border: 1px solid rgba(0, 0, 0, 0.19);
+            border-radius: 11px;
+            transition: width 0.5s;
+        }
+
+        /* Middle Section - Split Layout */
+        .middle-section {
+            display: grid;
+            grid-template-columns: 540px 1fr;
+            gap: 15px;
+            overflow: hidden;
+        }
+
+        /* Media Section */
+        .media-section {
+            background: rgba(243, 249, 239, 0.9);
+            border-radius: 41px;
+            padding: 30px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .media-placeholder {
+            color: #2D571A;
+            font-size: 24px;
+            font-weight: 600;
+            text-align: center;
+            line-height: 1.5;
+        }
+
+        .media-image {
+            max-width: 100%;
+            max-height: 100%;
+            border-radius: 20px;
+            object-fit: contain;
+            display: none;
+        }
+
+        .media-image.visible {
+            display: block;
+        }
+
+        .media-topic-name {
+            margin-top: 15px;
+            color: #2D571A;
+            font-size: 20px;
+            font-weight: 600;
+            text-align: center;
+        }
+
+        /* Fact-Check Section */
+        .fact-check-section {
+            background: rgba(243, 249, 239, 0.9);
+            border-radius: 41px;
+            padding: 25px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .fact-check-header {
+            color: #2D571A;
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #B1B1B1;
+        }
+
+        .fact-check-stats {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 15px;
+            padding: 10px;
+            background: rgba(255, 255, 255, 0.5);
+            border-radius: 10px;
+        }
+
+        .stat-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 16px;
+        }
+
+        .stat-dot {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+        }
+
+        .stat-dot.supported {
+            background: #448127;
+        }
+
+        .stat-dot.uncertain {
+            background: #CCBA35;
+        }
+
+        .stat-dot.contradicted {
+            background: #C43030;
+        }
+
+        .fact-check-list {
+            flex: 1;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .fact-check-item {
+            border-radius: 33px;
+            padding: 20px;
+            transition: transform 0.2s;
+        }
+
+        .fact-check-item:hover {
+            transform: translateX(5px);
+        }
+
+        .fact-check-item.supported {
+            background: rgba(68, 129, 39, 0.20);
+        }
+
+        .fact-check-item.uncertain {
+            background: rgba(204, 186, 55, 0.20);
+        }
+
+        .fact-check-item.contradicted {
+            background: rgba(196, 48, 48, 0.20);
+        }
+
+        .fact-verdict {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+            font-size: 20px;
+            font-weight: 600;
+        }
+
+        .verdict-dot {
+            width: 19px;
+            height: 19px;
+            border-radius: 50%;
+        }
+
+        .verdict-dot.supported {
+            background: #448127;
+        }
+
+        .verdict-dot.uncertain {
+            background: #CCBA35;
+        }
+
+        .verdict-dot.contradicted {
+            background: #C43030;
+            border: 1px solid rgba(143, 10, 10, 0.7);
+        }
+
+        .fact-claim {
+            font-size: 20px;
+            margin-bottom: 8px;
+            line-height: 1.4;
+        }
+
+        .fact-timestamp {
+            color: #448127;
+            font-size: 14px;
+            margin-bottom: 5px;
+        }
+
+        .fact-source {
+            font-size: 16px;
+            margin-top: 5px;
+        }
+
+        .fact-source a {
+            color: #2C497F;
+            text-decoration: underline;
+            cursor: pointer;
+        }
+
+        .fact-expand {
+            color: rgba(0, 0, 0, 0.46);
+            font-size: 13px;
+            margin-top: 5px;
+            cursor: pointer;
+        }
+
+        /* Bottom Section - Episode Info */
+        .episode-section {
+            background: rgba(243, 249, 239, 0.9);
+            border-radius: 41px;
+            padding: 15px 30px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            height: 100px;
+        }
+
+        .episode-info {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .logo {
+            height: 60px;
+        }
+
+        .episode-title {
+            font-size: 20px;
+        }
+
+        .episode-number {
+            color: #448127;
+            font-weight: 700;
+        }
+
+        .episode-time {
+            color: #448127;
+            font-size: 14px;
+            font-weight: 700;
+        }
+
+        .waveform {
+            display: flex;
+            gap: 5px;
+            align-items: center;
+        }
+
+        .wave-bar {
+            width: 3px;
+            background: #448127;
+            border-radius: 10px;
+            animation: wave 1s ease-in-out infinite;
+        }
+
+        @keyframes wave {
+            0%, 100% { height: 15px; }
+            50% { height: 30px; }
+        }
+
+        /* Scrollbar Styles */
+        .timeline-content::-webkit-scrollbar,
+        .fact-check-list::-webkit-scrollbar {
+            height: 6px;
+            width: 6px;
+        }
+
+        .timeline-content::-webkit-scrollbar-track,
+        .fact-check-list::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.1);
+            border-radius: 10px;
+        }
+
+        .timeline-content::-webkit-scrollbar-thumb,
+        .fact-check-list::-webkit-scrollbar-thumb {
+            background: #2D571A;
+            border-radius: 10px;
+        }
+
+        .loading {
+            text-align: center;
+            color: #2D571A;
+            padding: 20px;
+            font-size: 18px;
+        }
+
+        .no-data {
+            text-align: center;
+            color: rgba(0, 0, 0, 0.4);
+            padding: 40px;
+            font-size: 16px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Top Section - Topic Timeline -->
+        <div class="timeline-section">
+            <div class="timeline-header">
+                <div class="timeline-title">TOPIC TIMELINE</div>
+                <div class="control-buttons">
+                    <button class="btn btn-start" id="startBtn" onclick="startStream()">Start</button>
+                    <button class="btn btn-stop" id="stopBtn" onclick="stopStream()" disabled>Stop</button>
+                </div>
+            </div>
+            <div class="timeline-content">
+                <div class="timeline-scroll" id="topicTimeline">
+                    <div class="loading">Waiting to start...</div>
+                </div>
+            </div>
+            <div class="progress-bar-container">
+                <div class="progress-bar-fill" id="progressBar" style="width: 0%"></div>
+            </div>
+        </div>
+
+        <!-- Middle Section -->
+        <div class="middle-section">
+            <!-- Media Section -->
+            <div class="media-section">
+                <div class="media-placeholder" id="mediaPlaceholder">&lt;MEDIA<br>PLACEHOLDER&gt;</div>
+                <img class="media-image" id="mediaImage" alt="Topic Image">
+                <div class="media-topic-name" id="mediaTopicName"></div>
+            </div>
+
+            <!-- Fact-Check Section -->
+            <div class="fact-check-section">
+                <div class="fact-check-header">FACT-CHECK</div>
+                <div class="fact-check-stats" id="factStats">
+                    <div class="stat-item">
+                        <div class="stat-dot supported"></div>
+                        <span>Supported: <span id="supportedCount">0</span></span>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-dot uncertain"></div>
+                        <span>Uncertain: <span id="uncertainCount">0</span></span>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-dot contradicted"></div>
+                        <span>Contradicted: <span id="contradictedCount">0</span></span>
+                    </div>
+                </div>
+                <div class="fact-check-list" id="factCheckList">
+                    <div class="no-data">No fact-checks yet</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bottom Section - Episode Info -->
+        <div class="episode-section">
+            <div class="episode-info">
+                <div class="episode-title">
+                    Episode <span class="episode-number" id="episodeNumber">--</span> - "<span id="episodeName">Waiting...</span>"
+                </div>
+                <div class="episode-time" id="episodeTime">Time: 00:00</div>
+            </div>
+            <div class="waveform" id="waveform" style="display: none;">
+                <div class="wave-bar" style="animation-delay: 0s; height: 15px;"></div>
+                <div class="wave-bar" style="animation-delay: 0.1s; height: 20px;"></div>
+                <div class="wave-bar" style="animation-delay: 0.2s; height: 15px;"></div>
+                <div class="wave-bar" style="animation-delay: 0.3s; height: 25px;"></div>
+                <div class="wave-bar" style="animation-delay: 0.4s; height: 15px;"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://0.0.0.0:8000/api/stream';
+        let pollingInterval = null;
+        let isStreaming = false;
+        let currentTopicId = null;
+        let lastFactCount = 0;
+
+        // Start stream
+        async function startStream() {
+            try {
+                const response = await fetch(`${API_BASE}/start`, { method: 'POST' });
+                const data = await response.json();
+
+                if (data.error) {
+                    alert('Error: ' + data.error);
+                    return;
+                }
+
+                isStreaming = true;
+                document.getElementById('startBtn').disabled = true;
+                document.getElementById('stopBtn').disabled = false;
+                document.getElementById('waveform').style.display = 'flex';
+
+                // Start polling for results
+                startPolling();
+            } catch (error) {
+                console.error('Failed to start stream:', error);
+                alert('Failed to start stream');
+            }
+        }
+
+        // Stop stream
+        async function stopStream() {
+            try {
+                const response = await fetch(`${API_BASE}/stop`, { method: 'POST' });
+                const data = await response.json();
+
+                stopPolling();
+                isStreaming = false;
+                document.getElementById('startBtn').disabled = false;
+                document.getElementById('stopBtn').disabled = true;
+                document.getElementById('waveform').style.display = 'none';
+
+                // Fetch final results
+                await fetchResults();
+            } catch (error) {
+                console.error('Failed to stop stream:', error);
+            }
+        }
+
+        // Start polling
+        function startPolling() {
+            fetchResults(); // Immediate fetch
+            pollingInterval = setInterval(fetchResults, 1000); // Poll every second
+        }
+
+        // Stop polling
+        function stopPolling() {
+            if (pollingInterval) {
+                clearInterval(pollingInterval);
+                pollingInterval = null;
+            }
+        }
+
+        // Fetch results from API
+        async function fetchResults() {
+            try {
+                const response = await fetch(`${API_BASE}/results`);
+                const data = await response.json();
+
+                updateUI(data);
+
+                // Auto-stop if stream is completed
+                if (data.status === 'completed' && isStreaming) {
+                    stopStream();
+                }
+            } catch (error) {
+                console.error('Failed to fetch results:', error);
+            }
+        }
+
+        // Update UI with data
+        function updateUI(data) {
+            // Update episode info
+            if (data.metadata) {
+                const filename = data.metadata.filename || 'Unknown';
+                const episodeName = filename.replace('.wav', '');
+                document.getElementById('episodeName').textContent = episodeName;
+                document.getElementById('episodeNumber').textContent = '42'; // Could extract from metadata
+            }
+
+            // Update progress
+            if (data.progress !== undefined) {
+                document.getElementById('progressBar').style.width = data.progress + '%';
+
+                // Calculate time from progress and duration
+                if (data.metadata && data.metadata.duration_seconds) {
+                    const currentTime = (data.progress / 100) * data.metadata.duration_seconds;
+                    document.getElementById('episodeTime').textContent =
+                        `Time: ${formatTime(currentTime)}`;
+                }
+            }
+
+            // Update timeline
+            updateTimeline(data.topics, data.topic_path, data.topic_images);
+
+            // Update fact-checks
+            updateFactChecks(data.fact_checks, data.fact_verdicts);
+        }
+
+        // Update topic timeline
+        function updateTimeline(topics, topicPath, topicImages) {
+            if (!topics || topics.length === 0) return;
+
+            const timeline = document.getElementById('topicTimeline');
+            timeline.innerHTML = '';
+
+            topics.forEach((topic, index) => {
+                // Create topic badge
+                const badge = document.createElement('div');
+                badge.className = 'topic-badge';
+                if (topic.topic_id === currentTopicId || index === topics.length - 1) {
+                    badge.className += ' active';
+                    currentTopicId = topic.topic_id;
+                }
+
+                const topicName = document.createElement('div');
+                topicName.textContent = topic.topic;
+                badge.appendChild(topicName);
+
+                const timestamp = document.createElement('div');
+                timestamp.className = 'topic-timestamp';
+                timestamp.textContent = formatTimestamp(topic.timestamp);
+                badge.appendChild(timestamp);
+
+                badge.onclick = () => selectTopic(topic, topicImages);
+
+                timeline.appendChild(badge);
+
+                // Add arrow if not last
+                if (index < topics.length - 1) {
+                    const arrow = document.createElement('div');
+                    arrow.className = 'topic-arrow';
+                    arrow.textContent = '→';
+                    timeline.appendChild(arrow);
+                }
+            });
+
+            // Auto-scroll to latest topic
+            timeline.scrollLeft = timeline.scrollWidth;
+        }
+
+        // Select topic and show image
+        function selectTopic(topic, topicImages) {
+            currentTopicId = topic.topic_id;
+
+            // Update active state
+            document.querySelectorAll('.topic-badge').forEach(badge => {
+                badge.classList.remove('active');
+            });
+            event.target.closest('.topic-badge').classList.add('active');
+
+            // Find and display image
+            const imageData = topicImages?.find(img => img.topic_id === topic.topic_id);
+            const mediaImage = document.getElementById('mediaImage');
+            const mediaPlaceholder = document.getElementById('mediaPlaceholder');
+            const mediaTopicName = document.getElementById('mediaTopicName');
+
+            if (imageData && imageData.image_url) {
+                mediaImage.src = imageData.image_url;
+                mediaImage.classList.add('visible');
+                mediaPlaceholder.style.display = 'none';
+                mediaTopicName.textContent = topic.topic;
+                mediaTopicName.style.display = 'block';
+            } else {
+                mediaImage.classList.remove('visible');
+                mediaPlaceholder.style.display = 'block';
+                mediaTopicName.style.display = 'none';
+            }
+        }
+
+        // Update fact-checks
+        function updateFactChecks(factChecks, factVerdicts) {
+            // Update stats
+            if (factVerdicts) {
+                document.getElementById('supportedCount').textContent = factVerdicts.SUPPORTED || 0;
+                document.getElementById('uncertainCount').textContent = factVerdicts.UNCERTAIN || 0;
+                document.getElementById('contradictedCount').textContent = factVerdicts.CONTRADICTED || 0;
+            }
+
+            if (!factChecks || factChecks.length === 0) return;
+
+            // Only update if new fact-checks arrived
+            if (factChecks.length === lastFactCount) return;
+            lastFactCount = factChecks.length;
+
+            const list = document.getElementById('factCheckList');
+            list.innerHTML = '';
+
+            // Group by verdict
+            const grouped = {
+                SUPPORTED: factChecks.filter(f => f.verdict === 'SUPPORTED'),
+                UNCERTAIN: factChecks.filter(f => f.verdict === 'UNCERTAIN'),
+                CONTRADICTED: factChecks.filter(f => f.verdict === 'CONTRADICTED')
+            };
+
+            // Render each group
+            Object.entries(grouped).forEach(([verdict, checks]) => {
+                checks.forEach(check => {
+                    const item = createFactCheckItem(check, verdict);
+                    list.appendChild(item);
+                });
+            });
+
+            // Auto-scroll to latest
+            list.scrollTop = list.scrollHeight;
+        }
+
+        // Create fact-check item
+        function createFactCheckItem(check, verdict) {
+            const item = document.createElement('div');
+            item.className = `fact-check-item ${verdict.toLowerCase()}`;
+
+            // Verdict header
+            const verdictHeader = document.createElement('div');
+            verdictHeader.className = 'fact-verdict';
+            verdictHeader.innerHTML = `
+                <div class="verdict-dot ${verdict.toLowerCase()}"></div>
+                <span>${verdict.charAt(0) + verdict.slice(1).toLowerCase()}</span>
+            `;
+            item.appendChild(verdictHeader);
+
+            // Claim text
+            const claim = document.createElement('div');
+            claim.className = 'fact-claim';
+            claim.textContent = `"${check.claim}"`;
+            item.appendChild(claim);
+
+            // Timestamp (if available from transcripts)
+            const timestamp = document.createElement('div');
+            timestamp.className = 'fact-timestamp';
+            timestamp.textContent = formatTimestamp(check.timestamp);
+            item.appendChild(timestamp);
+
+            // Sources
+            if (check.evidence_sources && check.evidence_sources.length > 0) {
+                const sources = document.createElement('div');
+                sources.className = 'fact-source';
+                sources.innerHTML = 'Source: ' + check.evidence_sources
+                    .slice(0, 2)
+                    .map(src => {
+                        const domain = new URL(src).hostname.replace('www.', '');
+                        return `<a href="${src}" target="_blank">${domain}</a>`;
+                    })
+                    .join(', ');
+                item.appendChild(sources);
+            } else {
+                const sources = document.createElement('div');
+                sources.className = 'fact-source';
+                sources.textContent = 'Source: ??';
+                item.appendChild(sources);
+            }
+
+            return item;
+        }
+
+        // Format timestamp
+        function formatTimestamp(isoString) {
+            if (!isoString) return '00:00';
+            const date = new Date(isoString);
+            const minutes = String(date.getMinutes()).padStart(2, '0');
+            const seconds = String(date.getSeconds()).padStart(2, '0');
+            return `${minutes}:${seconds}`;
+        }
+
+        // Format time in seconds to MM:SS
+        function formatTime(seconds) {
+            const mins = Math.floor(seconds / 60);
+            const secs = Math.floor(seconds % 60);
+            return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+        }
+
+        // Initial load
+        window.addEventListener('load', () => {
+            // Check if stream is already running
+            fetchResults();
+        });
+    </script>
+</body>
+</html>

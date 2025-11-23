@@ -10,6 +10,7 @@ from datetime import datetime
 from typing import AsyncGenerator, Optional
 from deepgram import AsyncDeepgramClient
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from deepgram import DeepgramClient
 from deepgram.core.events import EventType
@@ -77,6 +78,15 @@ app = FastAPI(
     description="AI-powered assistant for live podcast transcription and fact-checking",
     version="1.0.0",
     lifespan=lifespan,
+)
+
+# Add CORS middleware to allow frontend access
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # In production, specify your frontend URL
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
