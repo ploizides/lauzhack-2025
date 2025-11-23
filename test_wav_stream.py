@@ -126,7 +126,11 @@ async def stream_wav_file():
                             elif data.get("type") == "topic_update":
                                 topic = data.get("current_topic", "Unknown")
                                 total = data.get("total_topics", 0)
-                                print(f"\n📊 TOPIC UPDATE: {topic} (Total topics: {total})\n")
+                                image_url = data.get("image_url")
+                                print(f"\n📊 TOPIC UPDATE: {topic} (Total topics: {total})")
+                                if image_url:
+                                    print(f"   🖼️  Image: {image_url}")
+                                print()
 
                             elif data.get("type") == "fact_queued":
                                 sentence = data.get("sentence", "")[:60]

@@ -44,6 +44,7 @@ htmlcov/
 
 # Logs
 *.log
+/logs
 
 # OS
 .DS_Store
@@ -53,3 +54,5 @@ Thumbs.db
 *.wav
 *.mp3
 *.m4a
+
+

@@ -83,9 +83,14 @@ class StateManager:
         self.topic_tree: nx.DiGraph = nx.DiGraph()
         self.current_topic_id: Optional[str] = None
         self.topic_counter: int = 0
+        self.topic_path: List[str] = []  # Sequential history of topics visited
+        self.topic_images: List[Dict[str, Optional[str]]] = []  # Sequential list of {topic_id, topic, image_url}
 
         # Fact Check Queue - async queue for fact-checking tasks
         self.fact_queue: asyncio.Queue = asyncio.Queue()
+
+        # Sentence accumulation for batched claim selection
+        self.sentence_batch: List[str] = []
 
         # Fact Check Results - stored results for retrieval
         self.fact_results: List[FactCheckResult] = []
@@ -182,6 +187,8 @@ class StateManager:
     ) -> str:
         """
         Add a new topic node to the topic tree.
+        
+        Always links to the current topic, creating a temporal chain.
 
         Args:
             topic: Topic name
@@ -196,15 +203,18 @@ class StateManager:
         self.stats["topics_identified"] += 1
 
         node = TopicNode(
-            topic=topic, keywords=keywords, timestamp=timestamp, sentence_count=1
+            topic=topic, keywords=keywords, timestamp=timestamp, 
+            sentence_count=1
         )
 
         self.topic_tree.add_node(topic_id, data=node)
 
-        # Link to previous topic if exists
+        # Link to current topic (temporal chain)
         if self.current_topic_id is not None:
             self.topic_tree.add_edge(self.current_topic_id, topic_id)
-
+        
+        # Add to topic path history
+        self.topic_path.append(topic_id)
         self.current_topic_id = topic_id
         return topic_id
 
@@ -213,6 +223,35 @@ class StateManager:
         if self.current_topic_id is not None:
             node_data = self.topic_tree.nodes[self.current_topic_id]["data"]
             node_data.sentence_count += 1
+    
+    def switch_to_topic(self, topic_id: str) -> None:
+        """
+        Switch to an existing topic (when conversation returns to it).
+        
+        Args:
+            topic_id: Topic ID to switch to
+        """
+        if topic_id in self.topic_tree.nodes:
+            self.current_topic_id = topic_id
+            self.topic_path.append(topic_id)
+            # Increment sentence count when returning to topic
+            node_data = self.topic_tree.nodes[topic_id]["data"]
+            node_data.sentence_count += 1
+    
+    def add_topic_image(self, topic_id: str, topic: str, image_url: Optional[str]) -> None:
+        """
+        Record an image URL for a topic (called after async image search completes).
+        
+        Args:
+            topic_id: Topic ID
+            topic: Topic name
+            image_url: URL of the image (or None if search failed)
+        """
+        self.topic_images.append({
+            "topic_id": topic_id,
+            "topic": topic,
+            "image_url": image_url
+        })
 
     def get_topic_timeline(self) -> List[TopicNode]:
         """
@@ -232,6 +271,53 @@ class StateManager:
         # Sort by timestamp
         nodes.sort(key=lambda x: x.timestamp)
         return nodes
+    
+    def export_topic_tree_json(self, filepath: str) -> None:
+        """
+        Export the topic tree to a JSON file for visualization.
+        
+        Args:
+            filepath: Path to save JSON file
+        """
+        import json
+        
+        # Build tree structure
+        tree_data = {
+            "nodes": [],
+            "edges": [],
+            "topic_path": self.topic_path,
+            "topic_images": self.topic_images,  # Sequential list of topic images
+            "metadata": {
+                "total_topics": len(self.topic_tree.nodes),
+                "current_topic": self.current_topic_id,
+                "generated_at": datetime.now().isoformat()
+            }
+        }
+        
+        # Add nodes
+        for node_id in self.topic_tree.nodes:
+            node_data = self.topic_tree.nodes[node_id]["data"]
+            tree_data["nodes"].append({
+                "id": node_id,
+                "topic": node_data.topic,
+                "keywords": node_data.keywords,
+                "timestamp": node_data.timestamp.isoformat(),
+                "sentence_count": node_data.sentence_count,
+                "weight": node_data.weight
+            })
+        
+        # Add edges (parent-child relationships)
+        for source, target in self.topic_tree.edges:
+            tree_data["edges"].append({
+                "source": source,
+                "target": target
+            })
+        
+        # Write to file
+        with open(filepath, 'w') as f:
+            json.dump(tree_data, f, indent=2)
+        
+        print(f"\n💾 Topic tree saved to: {filepath}")
 
     def get_stats(self) -> Dict:
         """

@@ -18,6 +18,7 @@ from config import (
     settings,
     CLAIM_DETECTION_PROMPT,
     CLAIM_VERIFICATION_PROMPT,
+    CLAIM_SELECTION_PROMPT,
     SEARCH_CONFIG,
 )
 from state_manager import state, FactCheckResult
@@ -34,6 +35,132 @@ class FactEngine:
     def __init__(self):
         self.client = Together(api_key=settings.together_api_key)
         self.search_client = DDGS()
+
+    async def _generate_search_query(self, claim: str) -> str:
+        """
+        Generate an optimized search query from a claim.
+        
+        Extracts key facts, entities, and numbers to create a better search query.
+        
+        Args:
+            claim: The claim to generate a search query for
+            
+        Returns:
+            Optimized search query string
+        """
+        try:
+            prompt = f"""Convert this claim into an optimized web search query.
+
+Claim: {claim}
+
+Instructions:
+1. Extract the CORE FACTUAL ASSERTION (remove filler, opinions, context)
+2. Identify KEY ENTITIES (names, organizations, places, numbers, dates)
+3. Create a concise search query (3-8 words) that will find relevant evidence
+
+Examples:
+- Claim: "eighty percent not maybe ninety percent of the funding goes to the democrats"
+  Query: "political funding distribution democrats republicans percentage"
+  
+- Claim: "ninety percent of the money is going to your opponents"
+  Query: "campaign finance political party funding distribution"
+
+Output ONLY the search query, nothing else."""
+
+            loop = asyncio.get_event_loop()
+            response = await loop.run_in_executor(
+                None,
+                lambda: self.client.chat.completions.create(
+                    model=settings.together_model,
+                    messages=[
+                        {"role": "system", "content": "You are a search query optimization assistant."},
+                        {"role": "user", "content": prompt},
+                    ],
+                    temperature=0.1,
+                    max_tokens=50,
+                ),
+            )
+            
+            search_query = response.choices[0].message.content.strip()
+            # Remove quotes if present
+            search_query = search_query.strip('"\'')
+            
+            return search_query
+            
+        except Exception as e:
+            logger.error(f"Search query generation failed: {e}")
+            # Fallback: use claim as-is
+            return claim
+
+    async def select_claims(self, statements: List[str]) -> List[str]:
+        """
+        Select the most important factual claims from a batch of statements.
+        
+        This replaces individual claim detection for each sentence with a single
+        batched selection that uses context to identify the most relevant claims.
+
+        Args:
+            statements: List of recent statements to analyze
+
+        Returns:
+            List of selected claims (extracted with full context)
+        """
+        try:
+            # Concatenate statements into a paragraph for better context
+            full_text = " ".join(statements)
+            
+            prompt = CLAIM_SELECTION_PROMPT.format(
+                text=full_text,
+                max_claims=settings.max_claims_per_batch
+            )
+
+            # Run LLM call in thread pool
+            loop = asyncio.get_event_loop()
+            try:
+                response = await loop.run_in_executor(
+                    None,
+                    lambda: self.client.chat.completions.create(
+                        model=settings.together_model,
+                        messages=[
+                            {
+                                "role": "system",
+                                "content": "You are a claim selection assistant. Always respond in valid JSON format.",
+                            },
+                            {"role": "user", "content": prompt},
+                        ],
+                        temperature=0.2,
+                        max_tokens=400,
+                    ),
+                )
+            except Exception as api_error:
+                print(f"❌ API call failed: {api_error}")
+                return []
+
+            content = response.choices[0].message.content.strip()
+
+            # Parse JSON response
+            if content.startswith("```"):
+                content = content.split("```")[1]
+                if content.startswith("json"):
+                    content = content[4:]
+                content = content.strip()
+
+            result = json.loads(content)
+            
+            selected = [claim["claim"] for claim in result.get("selected_claims", [])]
+            
+            # Print selected claims to terminal
+            if selected:
+                print(f"✅ SELECTED CLAIMS:")
+                for claim in selected:
+                    print(f"   • {claim}")
+                print()
+            
+            return selected
+
+        except Exception as e:
+            logger.error(f"Claim selection failed: {e}")
+            return []
 
     async def detect_claim(self, statement: str) -> Optional[Dict]:
         """
@@ -109,6 +236,10 @@ class FactEngine:
 
         try:
             logger.info(f"Searching evidence for: {claim[:100]}...")
+            
+            # Generate a better search query from the claim
+            search_query = await self._generate_search_query(claim)
+            print(f"🔍 Search query: {search_query}")
 
             # Run search in thread pool to avoid blocking
             loop = asyncio.get_event_loop()
@@ -116,7 +247,7 @@ class FactEngine:
                 None,
                 lambda: list(
                     self.search_client.text(
-                        claim,
+                        search_query,
                         region=SEARCH_CONFIG["region"],
                         safesearch=SEARCH_CONFIG["safesearch"],
                         max_results=max_results,
@@ -312,6 +443,15 @@ class FactEngine:
                     state.add_fact_result(result)
                     state.mark_fact_check_performed()
                     logger.info(f"Fact check stored: {result.verdict}")
+                    
+                    # Print result to terminal
+                    print(f"\n{'='*60}")
+                    print(f"📊 FACT CHECK RESULT")
+                    print(f"{'='*60}")
+                    print(f"Claim: {result.claim}")
+                    print(f"Verdict: {result.verdict} (Confidence: {result.confidence:.0%})")
+                    print(f"Explanation: {result.explanation}")
+                    print(f"{'='*60}\n")
 
                 # Mark task as done
                 state.fact_queue.task_done()

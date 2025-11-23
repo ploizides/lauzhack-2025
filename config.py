@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     # Configuration Parameters
     fact_check_rate_limit: int = 10  # seconds between fact checks
     topic_update_threshold: int = 5  # finalized sentences before topic update
+    claim_selection_batch_size: int = 10  # sentences to accumulate before selecting claims
+    max_claims_per_batch: int = 2  # max claims to select from each batch
 
     # Model Configuration
     together_model: str = "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo"
@@ -35,6 +37,10 @@ class Settings(BaseSettings):
 
 # Global settings instance
 settings = Settings()
+
+# Load claim selection prompt
+with open("CLAIM_SELECTION_PROMPT.txt", "r") as f:
+    CLAIM_SELECTION_PROMPT = f.read()
 
 
 # ============================================================================

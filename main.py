@@ -19,12 +19,13 @@ from state_manager import state, TranscriptSegment
 from topic_engine import topic_engine
 from fact_engine import fact_engine
 
-# Configure logging
+# Disable terminal logging
 logging.basicConfig(
-    level=logging.DEBUG,  # Changed to DEBUG to see detailed messages
+    level=logging.CRITICAL,  # Only critical errors
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
+logger.disabled = True
 
 
 # Background task for fact-checking queue
@@ -51,6 +52,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
 
     # Shutdown
     logger.info("Shutting down...")
+    
+    # Save topic tree before shutting down
+    if len(state.topic_tree.nodes) > 0:
+        from pathlib import Path
+        logs_dir = Path("logs")
+        logs_dir.mkdir(exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filepath = logs_dir / f"topic_tree_{timestamp}.json"
+        state.export_topic_tree_json(str(filepath))
+    
     # if fact_queue_task:
     #     fact_queue_task.cancel()
     #     try:
@@ -214,9 +225,9 @@ async def websocket_endpoint(websocket: WebSocket):
                                 finalized_text = state.consume_finalized_sentences()
                                 asyncio.create_task(update_topics_async(websocket, finalized_text))
 
-                            # Fact checking (Slow Loop - queued)
+                            # Fact checking (Slow Loop - batched selection)
                             if is_final:
-                                asyncio.create_task(queue_fact_check_async(websocket, sentence))
+                                asyncio.create_task(batch_claim_selection_async(websocket, sentence))
 
                 except Exception as e:
                     logger.error(f"Error processing Deepgram message: {e}")
@@ -325,23 +336,78 @@ async def update_topics_async(websocket: WebSocket, text: str):
         topic_id = await topic_engine.update_topic_tree(text)
 
         if topic_id:
-            summary = topic_engine.get_topic_summary()
+            # Get topic data
+            topic_node = state.topic_tree.nodes[topic_id]["data"]
+            
+            # Try to get image URL from topic_images (may not be available yet)
+            image_url = None
+            for img_entry in reversed(state.topic_images):
+                if img_entry["topic_id"] == topic_id:
+                    image_url = img_entry["image_url"]
+                    break
+            
             await websocket.send_json(
                 {
                     "type": "topic_update",
                     "topic_id": topic_id,
-                    "current_topic": summary["current_topic"],
-                    "total_topics": summary["total_topics"],
+                    "current_topic": topic_node.topic,
+                    "image_url": image_url,
+                    "total_topics": len(state.topic_tree.nodes),
                 }
             )
-            logger.info(f"Topic update sent: {summary['current_topic']}")
+            logger.info(f"Topic update sent: {topic_node.topic}")
 
     except Exception as e:
         logger.error(f"Error updating topics: {e}")
 
 
+async def batch_claim_selection_async(websocket: WebSocket, sentence: str):
+    """
+    Accumulate sentences and periodically select the most important claims to fact-check.
+    
+    This replaces the old approach of queuing every sentence individually.
+    
+    Args:
+        websocket: WebSocket to send updates to
+        sentence: Finalized sentence to add to the batch
+    """
+    try:
+        # Add sentence to batch
+        state.sentence_batch.append(sentence)
+        
+        # Check if batch is full
+        if len(state.sentence_batch) >= settings.claim_selection_batch_size:
+            # Print batch being processed
+            batch_text = " ".join(state.sentence_batch)
+            print(f"\n📋 BATCH: {batch_text}\n")
+            
+            # Select important claims from the batch
+            selected_claims = await fact_engine.select_claims(state.sentence_batch)
+            
+            # Queue selected claims for fact-checking
+            for claim in selected_claims:
+                await state.fact_queue.put(claim)
+                
+                # Notify client
+                await websocket.send_json(
+                    {
+                        "type": "claim_selected",
+                        "claim": claim,
+                        "queue_size": state.fact_queue.qsize(),
+                    }
+                )
+            
+            # Clear the batch
+            state.sentence_batch.clear()
+            
+    except Exception as e:
+        logger.error(f"Error in batch claim selection: {e}")
+
+
 async def queue_fact_check_async(websocket: WebSocket, sentence: str):
     """
+    OLD IMPLEMENTATION - kept for reference but not used.
+    
     Asynchronously queue a fact check (Slow Loop).
 
     This function does NOT block - it just queues the sentence
