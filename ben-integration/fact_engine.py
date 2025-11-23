@@ -14,14 +14,14 @@ except ImportError:
     from duckduckgo_search import DDGS  # Fallback for older package name
 from together import Together
 
-from backend.app.core.config import (
+from config import (
     settings,
     CLAIM_DETECTION_PROMPT,
     CLAIM_VERIFICATION_PROMPT,
     CLAIM_SELECTION_PROMPT,
     SEARCH_CONFIG,
 )
-from backend.app.core.state_manager import state, FactCheckResult
+from state_manager import state, FactCheckResult
 
 logger = logging.getLogger(__name__)
 
@@ -39,12 +39,12 @@ class FactEngine:
     async def _generate_search_query(self, claim: str) -> str:
         """
         Generate an optimized search query from a claim.
-
+        
         Extracts key facts, entities, and numbers to create a better search query.
-
+        
         Args:
             claim: The claim to generate a search query for
-
+            
         Returns:
             Optimized search query string
         """
@@ -61,7 +61,7 @@ Instructions:
 Examples:
 - Claim: "eighty percent not maybe ninety percent of the funding goes to the democrats"
   Query: "political funding distribution democrats republicans percentage"
-
+  
 - Claim: "ninety percent of the money is going to your opponents"
   Query: "campaign finance political party funding distribution"
 
@@ -80,13 +80,13 @@ Output ONLY the search query, nothing else."""
                     max_tokens=50,
                 ),
             )
-
+            
             search_query = response.choices[0].message.content.strip()
             # Remove quotes if present
             search_query = search_query.strip('"\'')
-
+            
             return search_query
-
+            
         except Exception as e:
             logger.error(f"Search query generation failed: {e}")
             # Fallback: use claim as-is
@@ -95,7 +95,7 @@ Output ONLY the search query, nothing else."""
     async def select_claims(self, statements: List[str]) -> List[str]:
         """
         Select the most important factual claims from a batch of statements.
-
+        
         This replaces individual claim detection for each sentence with a single
         batched selection that uses context to identify the most relevant claims.
 
@@ -108,7 +108,7 @@ Output ONLY the search query, nothing else."""
         try:
             # Concatenate statements into a paragraph for better context
             full_text = " ".join(statements)
-
+            
             prompt = CLAIM_SELECTION_PROMPT.format(
                 text=full_text,
                 max_claims=settings.max_claims_per_batch
@@ -146,16 +146,16 @@ Output ONLY the search query, nothing else."""
                 content = content.strip()
 
             result = json.loads(content)
-
+            
             selected = [claim["claim"] for claim in result.get("selected_claims", [])]
-
+            
             # Print selected claims to terminal
             if selected:
                 print(f"✅ SELECTED CLAIMS:")
                 for claim in selected:
                     print(f"   • {claim}")
                 print()
-
+            
             return selected
 
         except Exception as e:
@@ -220,7 +220,7 @@ Output ONLY the search query, nothing else."""
 
     async def search_evidence(
         self, claim: str, max_results: int = None
-    ) -> Tuple[List[Dict[str, str]], str]:
+    ) -> List[Dict[str, str]]:
         """
         Step 2: Search for evidence using DuckDuckGo.
 
@@ -229,14 +229,14 @@ Output ONLY the search query, nothing else."""
             max_results: Maximum number of results (defaults to SEARCH_CONFIG)
 
         Returns:
-            Tuple of (evidence list, search_query used)
+            List of evidence dictionaries with 'title', 'body', 'href' keys
         """
         if max_results is None:
             max_results = SEARCH_CONFIG["max_results"]
 
         try:
             logger.info(f"Searching evidence for: {claim[:100]}...")
-
+            
             # Generate a better search query from the claim
             search_query = await self._generate_search_query(claim)
             print(f"🔍 Search query: {search_query}")
@@ -267,11 +267,11 @@ Output ONLY the search query, nothing else."""
                 )
 
             logger.info(f"Found {len(evidence)} evidence sources")
-            return evidence, search_query
+            return evidence
 
         except Exception as e:
             logger.error(f"Evidence search failed: {e}")
-            return [], claim  # Return original claim as fallback
+            return []
 
     async def verify_claim(self, claim: str, evidence: List[Dict[str, str]]) -> Optional[Dict]:
         """
@@ -375,7 +375,7 @@ Output ONLY the search query, nothing else."""
             claim_text = detection.get("claim_text", statement)
 
             # Step 2: Search for Evidence
-            evidence, search_query = await self.search_evidence(claim_text)
+            evidence = await self.search_evidence(claim_text)
             if not evidence:
                 logger.warning(f"No evidence found for claim: {claim_text[:50]}...")
                 # Still return a result, but mark as uncertain
@@ -386,7 +386,6 @@ Output ONLY the search query, nothing else."""
                     explanation="No evidence found to verify this claim",
                     key_facts=[],
                     evidence_sources=[],
-                    search_query=search_query,
                     timestamp=datetime.now(),
                 )
 
@@ -396,7 +395,7 @@ Output ONLY the search query, nothing else."""
                 logger.error("Verification step failed")
                 return None
 
-            # Create result object with source links and search query
+            # Create result object with source links
             result = FactCheckResult(
                 claim=claim_text,
                 verdict=verification.get("verdict", "UNCERTAIN"),
@@ -404,7 +403,6 @@ Output ONLY the search query, nothing else."""
                 explanation=verification.get("explanation", ""),
                 key_facts=verification.get("key_facts", []),
                 evidence_sources=verification.get("source_links", []),
-                search_query=search_query,
                 timestamp=datetime.now(),
             )
 
@@ -445,13 +443,12 @@ Output ONLY the search query, nothing else."""
                     state.add_fact_result(result)
                     state.mark_fact_check_performed()
                     logger.info(f"Fact check stored: {result.verdict}")
-
+                    
                     # Print result to terminal
                     print(f"\n{'='*60}")
                     print(f"📊 FACT CHECK RESULT")
                     print(f"{'='*60}")
                     print(f"Claim: {result.claim}")
-                    print(f"Search Query: {result.search_query}")
                     print(f"Verdict: {result.verdict} (Confidence: {result.confidence:.0%})")
                     print(f"Explanation: {result.explanation}")
                     print(f"{'='*60}\n")

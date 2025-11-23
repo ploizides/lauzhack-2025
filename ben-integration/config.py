@@ -4,13 +4,8 @@ Handles environment variables, API keys, and LLM prompts.
 """
 
 import os
-from pathlib import Path
 from typing import Optional
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
-# Get the backend directory path
-BACKEND_DIR = Path(__file__).parent.parent.parent
-ENV_FILE = BACKEND_DIR / ".env"
 
 
 class Settings(BaseSettings):
@@ -34,7 +29,7 @@ class Settings(BaseSettings):
     max_buffer_size: int = 1000  # Increased to hold more segments
 
     model_config = SettingsConfigDict(
-        env_file=str(ENV_FILE),
+        env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=False
     )
@@ -44,45 +39,8 @@ class Settings(BaseSettings):
 settings = Settings()
 
 # Load claim selection prompt
-CLAIM_SELECTION_PROMPT_FILE = BACKEND_DIR / "CLAIM_SELECTION_PROMPT.txt"
-if CLAIM_SELECTION_PROMPT_FILE.exists():
-    with open(CLAIM_SELECTION_PROMPT_FILE, "r") as f:
-        CLAIM_SELECTION_PROMPT = f.read()
-else:
-    # Fallback if file doesn't exist yet
-    CLAIM_SELECTION_PROMPT = """You are analyzing a conversation transcript to identify important factual claims worth fact-checking.
-
-Here is the recent conversation:
-
-{text}
-
-Your task:
-1. Identify VERIFIABLE FACTUAL CLAIMS in this conversation
-2. Prioritize claims that are:
-   - Specific and concrete (numbers, dates, events, names)
-   - Potentially controversial or surprising
-   - About objective facts that can be verified
-3. Extract up to {max_claims} complete claims with enough context
-
-DO NOT select:
-- Pure opinions ("I think...", "I feel...")
-- Vague statements without specifics
-- Greetings or filler words
-- Questions
-
-Important: Extract the FULL CLAIM with context, not just fragments.
-
-Respond in JSON format:
-{{{{
-    "selected_claims": [
-        {{{{
-            "claim": "the complete factual claim with sufficient context",
-            "reason": "why this is important to verify"
-        }}}}
-    ]
-}}}}
-
-If no important factual claims exist, return: {{{{"selected_claims": []}}}}"""
+with open("CLAIM_SELECTION_PROMPT.txt", "r") as f:
+    CLAIM_SELECTION_PROMPT = f.read()
 
 
 # ============================================================================

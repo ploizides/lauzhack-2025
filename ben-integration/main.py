@@ -7,25 +7,25 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 from datetime import datetime
-from typing import AsyncGenerator, Optional
-from deepgram import AsyncDeepgramClient
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, HTTPException
+from typing import AsyncGenerator
+
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
-from deepgram import DeepgramClient
+from deepgram import AsyncDeepgramClient
 from deepgram.core.events import EventType
 
-from backend.app.core.config import settings
-from backend.app.core.state_manager import state, TranscriptSegment
-from backend.app.engines.topic_engine import topic_engine
-from backend.app.engines.fact_engine import fact_engine
-from backend.app.services.stream_processor import stream_processor
+from config import settings
+from state_manager import state, TranscriptSegment
+from topic_engine import topic_engine
+from fact_engine import fact_engine
 
-# Configure logging
+# Disable terminal logging
 logging.basicConfig(
-    level=logging.DEBUG,  # Changed to DEBUG to see detailed messages
+    level=logging.CRITICAL,  # Only critical errors
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
+logger.disabled = True
 
 
 # Background task for fact-checking queue
@@ -52,7 +52,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
 
     # Shutdown
     logger.info("Shutting down...")
-
+    
     # Save topic tree before shutting down
     if len(state.topic_tree.nodes) > 0:
         from pathlib import Path
@@ -61,7 +61,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filepath = logs_dir / f"topic_tree_{timestamp}.json"
         state.export_topic_tree_json(str(filepath))
-
+    
     # if fact_queue_task:
     #     fact_queue_task.cancel()
     #     try:
@@ -134,191 +134,6 @@ async def get_transcript():
     })
 
 
-@app.post("/process-audio")
-async def process_audio(file: UploadFile = File(...)):
-    """
-    Process an audio file and return transcription, topics, and fact-checks.
-
-    This endpoint is designed for demos - it processes a complete audio file
-    and returns all analysis results in one response.
-
-    Args:
-        file: Audio file (WAV, MP3, etc.)
-
-    Returns:
-        JSON with transcript, topics, and fact-check results
-    """
-    logger.info(f"Processing audio file: {file.filename}")
-
-    try:
-        # Read the audio file
-        audio_data = await file.read()
-
-        # Initialize Deepgram client
-        deepgram = DeepgramClient(api_key=settings.deepgram_api_key)
-
-        logger.info("Sending audio to Deepgram for transcription...")
-
-        # Send to Deepgram prerecorded API using the correct method
-        response = deepgram.listen.v1.media.transcribe_file(
-            request=audio_data,
-            model="nova-3",
-            smart_format=True,
-            punctuate=True,
-            paragraphs=True,
-            utterances=True,
-        )
-
-        # Extract transcript
-        transcript_data = response.results
-        if not transcript_data or not transcript_data.channels:
-            raise HTTPException(status_code=500, detail="No transcription results from Deepgram")
-
-        # Get the full transcript
-        alternatives = transcript_data.channels[0].alternatives
-        if not alternatives:
-            raise HTTPException(status_code=500, detail="No alternatives in transcription")
-
-        full_transcript = alternatives[0].transcript
-        paragraphs = alternatives[0].paragraphs.paragraphs if hasattr(alternatives[0], 'paragraphs') else []
-
-        logger.info(f"Transcription complete: {len(full_transcript)} characters")
-
-        # Process topics from paragraphs
-        topics_list = []
-        if paragraphs:
-            for i, para in enumerate(paragraphs[:5]):  # Process first 5 paragraphs for demo
-                para_text = " ".join([sentence.text for sentence in para.sentences])
-                if len(para_text) > 50:  # Only process substantial paragraphs
-                    topic_result = await topic_engine.extract_topic(para_text)
-                    if topic_result:
-                        topic, keywords = topic_result
-                        topics_list.append({
-                            "topic": topic,
-                            "keywords": keywords,
-                            "text_sample": para_text[:100] + "..."
-                        })
-
-        logger.info(f"Extracted {len(topics_list)} topics")
-
-        # Process fact-checking on key sentences
-        fact_checks = []
-        if paragraphs:
-            sentences_to_check = []
-            for para in paragraphs[:3]:  # Check first 3 paragraphs
-                for sentence in para.sentences[:2]:  # First 2 sentences per paragraph
-                    if len(sentence.text) > 30:  # Only substantial sentences
-                        sentences_to_check.append(sentence.text)
-
-            # Fact-check each sentence
-            for sentence in sentences_to_check[:5]:  # Limit to 5 for demo
-                logger.info(f"Fact-checking: {sentence[:50]}...")
-
-                # Run the full fact-checking pipeline
-                result = await fact_engine.check_fact(sentence)
-                if result:
-                    fact_checks.append({
-                        "claim": result.claim,
-                        "verdict": result.verdict,
-                        "confidence": result.confidence,
-                        "explanation": result.explanation,
-                        "key_facts": result.key_facts,
-                        "sources": result.evidence_sources
-                    })
-
-        logger.info(f"Completed {len(fact_checks)} fact-checks")
-
-        # Return comprehensive results
-        return JSONResponse(content={
-            "status": "success",
-            "filename": file.filename,
-            "transcript": {
-                "full_text": full_transcript,
-                "word_count": len(full_transcript.split()),
-                "paragraph_count": len(paragraphs) if paragraphs else 0
-            },
-            "topics": topics_list,
-            "fact_checks": fact_checks,
-            "summary": {
-                "total_topics": len(topics_list),
-                "total_fact_checks": len(fact_checks),
-                "verified_claims": len([f for f in fact_checks if f["verdict"] == "SUPPORTED"]),
-                "false_claims": len([f for f in fact_checks if f["verdict"] == "REFUTED"])
-            }
-        })
-
-    except Exception as e:
-        logger.error(f"Error processing audio: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Error processing audio: {str(e)}")
-
-
-# ============================================================================
-# STREAMING API ENDPOINTS
-# Server-side streaming for MVP demo
-# ============================================================================
-
-@app.post("/api/stream/start")
-async def start_stream():
-    """
-    Start server-side streaming of the hardcoded audio file.
-
-    This endpoint:
-    1. Starts processing the audio file in chunks (simulating real-time)
-    2. Runs transcription, topic detection, and fact-checking
-    3. Writes results incrementally to stream_output.json
-
-    Returns:
-        Status and metadata about the stream
-    """
-    result = await stream_processor.start_stream()
-
-    if "error" in result:
-        raise HTTPException(status_code=400, detail=result["error"])
-
-    return result
-
-
-@app.post("/api/stream/stop")
-async def stop_stream():
-    """
-    Stop the current streaming session.
-
-    Returns:
-        Confirmation of stream stop
-    """
-    result = await stream_processor.stop_stream()
-
-    if "error" in result:
-        raise HTTPException(status_code=400, detail=result["error"])
-
-    return result
-
-
-@app.get("/api/stream/status")
-async def get_stream_status():
-    """
-    Get the current status of the stream.
-
-    Returns:
-        Current streaming status, progress, and counts
-    """
-    return stream_processor.get_status()
-
-
-@app.get("/api/stream/results")
-async def get_stream_results():
-    """
-    Get the complete current results of the stream.
-
-    This returns the same data that's written to stream_output.json,
-    providing an API alternative to reading the file directly.
-
-    Returns:
-        Complete results including transcripts, topics, and fact-checks
-    """
-    return stream_processor.get_results()
-
-
 @app.websocket("/listen")
 async def websocket_endpoint(websocket: WebSocket):
     """
@@ -337,22 +152,6 @@ async def websocket_endpoint(websocket: WebSocket):
     """
     await websocket.accept()
     logger.info(f"WebSocket connection accepted from {websocket.client}")
-
-    # Register callback to send image updates when they become available
-    async def send_image_update(topic_id: str, topic: str, image_url: Optional[str]):
-        """Send image update to client when async image search completes."""
-        try:
-            await websocket.send_json({
-                "type": "topic_image_update",
-                "topic_id": topic_id,
-                "topic": topic,
-                "image_url": image_url,
-            })
-            logger.info(f"Sent image update for topic {topic_id}: {image_url}")
-        except Exception as e:
-            logger.warning(f"Failed to send image update: {e}")
-
-    state.image_update_callback = send_image_update
 
     # Initialize Deepgram client
     try:
@@ -518,16 +317,11 @@ async def websocket_endpoint(websocket: WebSocket):
                     pass
                 logger.info("Deepgram connection finished")
 
-                # Unregister image update callback
-                state.image_update_callback = None
-
     except Exception as e:
         logger.error(f"Failed to initialize Deepgram: {e}")
         # Truncate error message to fit WebSocket control frame limit (max 123 bytes)
         error_msg = str(e)[:100]
         await websocket.close(code=1011, reason=error_msg)
-        # Unregister callback on error too
-        state.image_update_callback = None
 
 
 async def update_topics_async(websocket: WebSocket, text: str):
@@ -544,14 +338,14 @@ async def update_topics_async(websocket: WebSocket, text: str):
         if topic_id:
             # Get topic data
             topic_node = state.topic_tree.nodes[topic_id]["data"]
-
+            
             # Try to get image URL from topic_images (may not be available yet)
             image_url = None
             for img_entry in reversed(state.topic_images):
                 if img_entry["topic_id"] == topic_id:
                     image_url = img_entry["image_url"]
                     break
-
+            
             await websocket.send_json(
                 {
                     "type": "topic_update",
@@ -570,9 +364,9 @@ async def update_topics_async(websocket: WebSocket, text: str):
 async def batch_claim_selection_async(websocket: WebSocket, sentence: str):
     """
     Accumulate sentences and periodically select the most important claims to fact-check.
-
+    
     This replaces the old approach of queuing every sentence individually.
-
+    
     Args:
         websocket: WebSocket to send updates to
         sentence: Finalized sentence to add to the batch
@@ -580,20 +374,20 @@ async def batch_claim_selection_async(websocket: WebSocket, sentence: str):
     try:
         # Add sentence to batch
         state.sentence_batch.append(sentence)
-
+        
         # Check if batch is full
         if len(state.sentence_batch) >= settings.claim_selection_batch_size:
             # Print batch being processed
             batch_text = " ".join(state.sentence_batch)
             print(f"\n📋 BATCH: {batch_text}\n")
-
+            
             # Select important claims from the batch
             selected_claims = await fact_engine.select_claims(state.sentence_batch)
-
+            
             # Queue selected claims for fact-checking
             for claim in selected_claims:
                 await state.fact_queue.put(claim)
-
+                
                 # Notify client
                 await websocket.send_json(
                     {
@@ -602,10 +396,10 @@ async def batch_claim_selection_async(websocket: WebSocket, sentence: str):
                         "queue_size": state.fact_queue.qsize(),
                     }
                 )
-
+            
             # Clear the batch
             state.sentence_batch.clear()
-
+            
     except Exception as e:
         logger.error(f"Error in batch claim selection: {e}")
 
@@ -613,7 +407,7 @@ async def batch_claim_selection_async(websocket: WebSocket, sentence: str):
 async def queue_fact_check_async(websocket: WebSocket, sentence: str):
     """
     OLD IMPLEMENTATION - kept for reference but not used.
-
+    
     Asynchronously queue a fact check (Slow Loop).
 
     This function does NOT block - it just queues the sentence
@@ -671,7 +465,6 @@ async def fact_stream_endpoint(websocket: WebSocket):
                             "explanation": result.explanation,
                             "key_facts": result.key_facts,
                             "evidence_sources": result.evidence_sources,
-                            "search_query": result.search_query,  # Include search query
                             "timestamp": result.timestamp.isoformat(),
                         }
                     )

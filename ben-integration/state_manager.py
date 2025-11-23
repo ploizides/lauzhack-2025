@@ -7,10 +7,10 @@ import asyncio
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Deque, Dict, List, Optional, Callable, Any
+from typing import Deque, Dict, List, Optional
 import networkx as nx
 
-from backend.app.core.config import settings
+from config import settings
 
 
 @dataclass
@@ -37,7 +37,6 @@ class FactCheckResult:
     explanation: str
     key_facts: List[str]
     evidence_sources: List[str]
-    search_query: str = ""  # The optimized search query used
     timestamp: datetime = field(default_factory=datetime.now)
 
     def __str__(self) -> str:
@@ -98,9 +97,6 @@ class StateManager:
 
         # Rate Limiting for Fact Checks
         self.last_fact_check_time: Optional[datetime] = None
-
-        # Callback for when images are found (allows WebSocket to send updates)
-        self.image_update_callback: Optional[Callable[[str, str, Optional[str]], Any]] = None
 
         # Statistics
         self.stats = {
@@ -191,7 +187,7 @@ class StateManager:
     ) -> str:
         """
         Add a new topic node to the topic tree.
-
+        
         Always links to the current topic, creating a temporal chain.
 
         Args:
@@ -207,7 +203,7 @@ class StateManager:
         self.stats["topics_identified"] += 1
 
         node = TopicNode(
-            topic=topic, keywords=keywords, timestamp=timestamp,
+            topic=topic, keywords=keywords, timestamp=timestamp, 
             sentence_count=1
         )
 
@@ -216,7 +212,7 @@ class StateManager:
         # Link to current topic (temporal chain)
         if self.current_topic_id is not None:
             self.topic_tree.add_edge(self.current_topic_id, topic_id)
-
+        
         # Add to topic path history
         self.topic_path.append(topic_id)
         self.current_topic_id = topic_id
@@ -227,11 +223,11 @@ class StateManager:
         if self.current_topic_id is not None:
             node_data = self.topic_tree.nodes[self.current_topic_id]["data"]
             node_data.sentence_count += 1
-
+    
     def switch_to_topic(self, topic_id: str) -> None:
         """
         Switch to an existing topic (when conversation returns to it).
-
+        
         Args:
             topic_id: Topic ID to switch to
         """
@@ -241,11 +237,11 @@ class StateManager:
             # Increment sentence count when returning to topic
             node_data = self.topic_tree.nodes[topic_id]["data"]
             node_data.sentence_count += 1
-
+    
     def add_topic_image(self, topic_id: str, topic: str, image_url: Optional[str]) -> None:
         """
         Record an image URL for a topic (called after async image search completes).
-
+        
         Args:
             topic_id: Topic ID
             topic: Topic name
@@ -256,15 +252,6 @@ class StateManager:
             "topic": topic,
             "image_url": image_url
         })
-
-        # Notify via callback if an image update handler is registered
-        if self.image_update_callback:
-            try:
-                import asyncio
-                asyncio.create_task(self.image_update_callback(topic_id, topic, image_url))
-            except Exception as e:
-                import logging
-                logging.getLogger(__name__).warning(f"Failed to call image update callback: {e}")
 
     def get_topic_timeline(self) -> List[TopicNode]:
         """
@@ -284,31 +271,29 @@ class StateManager:
         # Sort by timestamp
         nodes.sort(key=lambda x: x.timestamp)
         return nodes
-
+    
     def export_topic_tree_json(self, filepath: str) -> None:
         """
-        Export the topic tree and fact-check results to a JSON file for visualization.
-
+        Export the topic tree to a JSON file for visualization.
+        
         Args:
             filepath: Path to save JSON file
         """
         import json
-
+        
         # Build tree structure
         tree_data = {
             "nodes": [],
             "edges": [],
             "topic_path": self.topic_path,
             "topic_images": self.topic_images,  # Sequential list of topic images
-            "fact_checks": [],  # All fact-check results with search queries
             "metadata": {
                 "total_topics": len(self.topic_tree.nodes),
-                "total_fact_checks": len(self.fact_results),
                 "current_topic": self.current_topic_id,
                 "generated_at": datetime.now().isoformat()
             }
         }
-
+        
         # Add nodes
         for node_id in self.topic_tree.nodes:
             node_data = self.topic_tree.nodes[node_id]["data"]
@@ -320,35 +305,19 @@ class StateManager:
                 "sentence_count": node_data.sentence_count,
                 "weight": node_data.weight
             })
-
+        
         # Add edges (parent-child relationships)
         for source, target in self.topic_tree.edges:
             tree_data["edges"].append({
                 "source": source,
                 "target": target
             })
-
-        # Add fact-check results with search queries
-        for result in self.fact_results:
-            tree_data["fact_checks"].append({
-                "claim": result.claim,
-                "verdict": result.verdict,
-                "confidence": result.confidence,
-                "explanation": result.explanation,
-                "key_facts": result.key_facts,
-                "evidence_sources": result.evidence_sources,
-                "search_query": result.search_query,  # Include the search query used
-                "timestamp": result.timestamp.isoformat()
-            })
-
+        
         # Write to file
         with open(filepath, 'w') as f:
             json.dump(tree_data, f, indent=2)
-
-        print(f"\n💾 Session data saved to: {filepath}")
-        print(f"   - {len(tree_data['nodes'])} topics")
-        print(f"   - {len(tree_data['topic_images'])} images")
-        print(f"   - {len(tree_data['fact_checks'])} fact-checks")
+        
+        print(f"\n💾 Topic tree saved to: {filepath}")
 
     def get_stats(self) -> Dict:
         """

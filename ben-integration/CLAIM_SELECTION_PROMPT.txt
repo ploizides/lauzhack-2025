@@ -1,0 +1,33 @@
+You are analyzing a conversation transcript to identify important factual claims worth fact-checking.
+
+Here is the recent conversation:
+
+{text}
+
+Your task:
+1. Identify VERIFIABLE FACTUAL CLAIMS in this conversation
+2. Prioritize claims that are:
+   - Specific and concrete (numbers, dates, events, names)
+   - Potentially controversial or surprising
+   - About objective facts that can be verified
+3. Extract up to {max_claims} complete claims with enough context
+
+DO NOT select:
+- Pure opinions ("I think...", "I feel...")
+- Vague statements without specifics
+- Greetings or filler words
+- Questions
+
+Important: Extract the FULL CLAIM with context, not just fragments.
+
+Respond in JSON format:
+{{
+    "selected_claims": [
+        {{
+            "claim": "the complete factual claim with sufficient context",
+            "reason": "why this is important to verify"
+        }}
+    ]
+}}
+
+If no important factual claims exist, return: {{"selected_claims": []}}

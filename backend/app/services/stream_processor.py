@@ -48,7 +48,15 @@ class StreamProcessor:
             "progress": 0.0,
             "transcripts": [],
             "topics": [],
+            "topic_path": [],
+            "topic_images": [],
+            "edges": [],
             "fact_checks": [],
+            "fact_verdicts": {
+                "SUPPORTED": 0,
+                "CONTRADICTED": 0,
+                "UNCERTAIN": 0
+            },
             "metadata": {}
         }
         self._reset_state()
@@ -83,7 +91,15 @@ class StreamProcessor:
             "progress": 0.0,
             "transcripts": [],
             "topics": [],
+            "topic_path": [],
+            "topic_images": [],
+            "edges": [],
             "fact_checks": [],
+            "fact_verdicts": {
+                "SUPPORTED": 0,
+                "CONTRADICTED": 0,
+                "UNCERTAIN": 0
+            },
             "metadata": {}
         }
 
@@ -201,7 +217,11 @@ class StreamProcessor:
                 },
                 "transcripts": self.results.get("transcripts", []),
                 "topics": self.results.get("topics", []),
-                "fact_checks": self.results.get("fact_checks", [])
+                "topic_path": self.results.get("topic_path", []),
+                "topic_images": self.results.get("topic_images", []),
+                "edges": self.results.get("edges", []),
+                "fact_checks": self.results.get("fact_checks", []),
+                "fact_verdicts": self.results.get("fact_verdicts", {"SUPPORTED": 0, "CONTRADICTED": 0, "UNCERTAIN": 0})
             }
             
             # Save comprehensive file to the session directory
@@ -421,26 +441,49 @@ class StreamProcessor:
                 summary = topic_engine.get_topic_summary()
                 current_timestamp = datetime.now()
 
+                # Get topic node data
+                topic_node = state.topic_tree.nodes.get(topic_id)
+                node_data = topic_node['data'] if topic_node and 'data' in topic_node else None
+
+                # Get image URL if available
+                image_url = None
+                for img_entry in reversed(state.topic_images):
+                    if img_entry["topic_id"] == topic_id:
+                        image_url = img_entry["image_url"]
+                        break
+
                 # Add to results
                 self.results["topics"].append({
                     "topic_id": topic_id,
                     "topic": summary["current_topic"],
+                    "keywords": node_data.keywords if node_data and hasattr(node_data, 'keywords') else [],
+                    "sentence_count": node_data.sentence_count if node_data and hasattr(node_data, 'sentence_count') else 0,
+                    "weight": node_data.weight if node_data and hasattr(node_data, 'weight') else 1.0,
+                    "image_url": image_url,
                     "total_topics": summary["total_topics"],
                     "timestamp": current_timestamp.isoformat()
                 })
-                
+
+                # Update topic_path (full chronological path)
+                self.results["topic_path"] = state.topic_path.copy()
+
+                # Update topic_images (all images found so far)
+                self.results["topic_images"] = state.topic_images.copy()
+
+                # Update edges (parent-child relationships)
+                self.results["edges"] = [
+                    {"source": source, "target": target}
+                    for source, target in state.topic_tree.edges
+                ]
+
                 # Log to session logger
-                if self.session_logger:
-                    # Get topic node from state to extract keywords and sentence count
-                    topic_node = state.topic_tree.nodes.get(topic_id)
-                    if topic_node and 'data' in topic_node:
-                        node_data = topic_node['data']
-                        self.session_logger.log_topic(
-                            topic=summary["current_topic"],
-                            keywords=node_data.keywords if hasattr(node_data, 'keywords') else [],
-                            sentence_count=node_data.sentence_count if hasattr(node_data, 'sentence_count') else 0,
-                            timestamp=current_timestamp
-                        )
+                if self.session_logger and node_data:
+                    self.session_logger.log_topic(
+                        topic=summary["current_topic"],
+                        keywords=node_data.keywords if hasattr(node_data, 'keywords') else [],
+                        sentence_count=node_data.sentence_count if hasattr(node_data, 'sentence_count') else 0,
+                        timestamp=current_timestamp
+                    )
 
                 # Write to JSON
                 self._write_results()
@@ -484,10 +527,15 @@ class StreamProcessor:
                             "confidence": result.confidence,
                             "explanation": result.explanation,
                             "key_facts": result.key_facts,
-                            "sources": result.evidence_sources,
+                            "evidence_sources": result.evidence_sources,
+                            "search_query": result.search_query,
                             "timestamp": result.timestamp.isoformat()
                         })
-                        
+
+                        # Update verdict aggregation counts
+                        if result.verdict in self.results["fact_verdicts"]:
+                            self.results["fact_verdicts"][result.verdict] += 1
+
                         # Log to session logger
                         if self.session_logger:
                             self.session_logger.log_fact_check(
