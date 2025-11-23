@@ -21,7 +21,7 @@ from fact_engine import fact_engine
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,  # Changed to DEBUG to see detailed messages
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
@@ -41,10 +41,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
 
     # Startup
     logger.info("Starting Real-Time Podcast AI Assistant")
-    logger.info(f"Fact check rate limit: {settings.fact_check_rate_limit}s")
-    logger.info(f"Topic update threshold: {settings.topic_update_threshold} sentences")
-
-    # Start fact-checking queue processor
+    logger.info("Transcription + Topic Tracking + Fact Checking enabled")
+    
+    # Start fact-checking queue processor in background
     fact_queue_task = asyncio.create_task(fact_engine.process_fact_queue())
     logger.info("Fact queue processor started")
 
@@ -52,12 +51,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
 
     # Shutdown
     logger.info("Shutting down...")
-    if fact_queue_task:
-        fact_queue_task.cancel()
-        try:
-            await fact_queue_task
-        except asyncio.CancelledError:
-            pass
+    # if fact_queue_task:
+    #     fact_queue_task.cancel()
+    #     try:
+    #         await fact_queue_task
+    #     except asyncio.CancelledError:
+    #         pass
     logger.info("Shutdown complete")
 
 
@@ -86,28 +85,42 @@ async def get_stats():
     return JSONResponse(content=state.get_stats())
 
 
-@app.get("/topics")
-async def get_topics():
-    """Get topic timeline and summary."""
-    return JSONResponse(content=topic_engine.get_topic_summary())
+# DISABLED: Topics endpoint
+# @app.get("/topics")
+# async def get_topics():
+#     """Get topic timeline and summary."""
+#     return JSONResponse(content=topic_engine.get_topic_summary())
 
 
-@app.get("/facts")
-async def get_facts():
-    """Get recent fact-checking results."""
-    facts = [
-        {
-            "claim": result.claim,
-            "verdict": result.verdict,
-            "confidence": result.confidence,
-            "explanation": result.explanation,
-            "key_facts": result.key_facts,
-            "evidence_sources": result.evidence_sources,
-            "timestamp": result.timestamp.isoformat(),
-        }
-        for result in state.fact_results[-20:]  # Last 20 results
-    ]
-    return JSONResponse(content={"total": len(state.fact_results), "recent": facts})
+# DISABLED: Facts endpoint
+# @app.get("/facts")
+# async def get_facts():
+#     """Get recent fact-checking results."""
+#     facts = [
+#         {
+#             "claim": result.claim,
+#             "verdict": result.verdict,
+#             "confidence": result.confidence,
+#             "explanation": result.explanation,
+#             "key_facts": result.key_facts,
+#             "evidence_sources": result.evidence_sources,
+#             "timestamp": result.timestamp.isoformat(),
+#         }
+#         for result in state.fact_results[-20:]  # Last 20 results
+#     ]
+#     return JSONResponse(content={"total": len(state.fact_results), "recent": facts})
+
+
+@app.get("/transcript")
+async def get_transcript():
+    """Get full transcript."""
+    segments = list(state.transcript_buffer)
+    transcript_text = "\n".join([f"[{seg.timestamp.strftime('%H:%M:%S')}] {seg.text}" for seg in segments if seg.is_final])
+    return JSONResponse(content={
+        "total_segments": len(segments),
+        "final_segments": len([s for s in segments if s.is_final]),
+        "transcript": transcript_text
+    })
 
 
 @app.websocket("/listen")
@@ -135,10 +148,12 @@ async def websocket_endpoint(websocket: WebSocket):
 
         # Connect to Deepgram using v1 live API
         # Model: nova-3 for best accuracy
+        # Note: We convert stereo to mono before sending, so channels=1
         options = {
             "model": "nova-3",
             "encoding": "linear16",
             "sample_rate": "48000",
+            "channels": "1",
         }
         async with deepgram.listen.v1.connect(**options) as dg_connection:
 
@@ -146,6 +161,9 @@ async def websocket_endpoint(websocket: WebSocket):
             def on_message(message):
                 """Handle incoming transcription from Deepgram."""
                 try:
+                    # Log raw message structure for debugging
+                    logger.debug(f"Raw message type: {type(message).__name__}")
+                    
                     # Deepgram v1 message structure: message.channel.alternatives[0].transcript
                     if hasattr(message, 'channel') and hasattr(message.channel, 'alternatives'):
                         alternatives = message.channel.alternatives
@@ -158,9 +176,14 @@ async def websocket_endpoint(websocket: WebSocket):
                             
                             # Check if this is a final result
                             is_final = getattr(message, 'is_final', True)
+                            
+                            # Also check speech_final (natural speech endpoint)
+                            speech_final = getattr(message, 'speech_final', False)
 
                             # Get confidence from alternatives
                             confidence = getattr(alternatives[0], 'confidence', 1.0)
+                            
+                            logger.debug(f"Transcript: is_final={is_final}, speech_final={speech_final}, len={len(sentence)}, text={sentence[:50]}")
 
                             # Create transcript segment
                             segment = TranscriptSegment(
@@ -186,12 +209,12 @@ async def websocket_endpoint(websocket: WebSocket):
 
                             logger.info(f"[{'FINAL' if is_final else 'PARTIAL'}] {sentence}")
 
-                            # FAST LOOP: Update topics when threshold is reached
+                            # Topic tracking (Fast Loop)
                             if is_final and state.should_update_topics():
                                 finalized_text = state.consume_finalized_sentences()
                                 asyncio.create_task(update_topics_async(websocket, finalized_text))
 
-                            # SLOW LOOP: Queue fact check for finalized sentences
+                            # Fact checking (Slow Loop - queued)
                             if is_final:
                                 asyncio.create_task(queue_fact_check_async(websocket, sentence))
 
@@ -220,6 +243,9 @@ async def websocket_endpoint(websocket: WebSocket):
             # Start listening task
             listen_task = asyncio.create_task(dg_connection.start_listening())
             logger.info("Deepgram connection started successfully")
+            
+            chunk_count = 0
+            bytes_sent = 0
 
             # Main loop: receive audio from client and forward to Deepgram
             try:
@@ -228,8 +254,35 @@ async def websocket_endpoint(websocket: WebSocket):
                     data = await websocket.receive()
 
                     if "bytes" in data:
-                        # Forward audio to Deepgram using _send (internal method for v2)
-                        await dg_connection._send(data["bytes"])
+                        chunk_count += 1
+                        chunk_size = len(data["bytes"])
+                        bytes_sent += chunk_size
+                        
+                        # Log every 50 chunks
+                        if chunk_count % 50 == 0:
+                            logger.info(f"Sent {chunk_count} chunks, {bytes_sent:,} bytes total")
+                        
+                        # Convert stereo to mono (average L and R channels)
+                        # Audio is 16-bit PCM stereo (2 bytes per sample, 2 channels)
+                        import struct
+                        audio_bytes = data["bytes"]
+                        
+                        # Unpack all 16-bit samples
+                        samples = struct.unpack(f'<{len(audio_bytes)//2}h', audio_bytes)
+                        
+                        # Average every pair of samples (L and R channels)
+                        mono_samples = []
+                        for i in range(0, len(samples), 2):
+                            if i + 1 < len(samples):
+                                avg = (samples[i] + samples[i+1]) // 2
+                                mono_samples.append(avg)
+                            else:
+                                mono_samples.append(samples[i])
+                        
+                        mono_bytes = struct.pack(f'<{len(mono_samples)}h', *mono_samples)
+                        
+                        # Forward mono audio to Deepgram using send_media() for async v1
+                        await dg_connection.send_media(mono_bytes)
 
                     elif "text" in data:
                         # Handle control messages from client

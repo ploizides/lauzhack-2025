@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     together_model: str = "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo"
 
     # Transcript Buffer Configuration
-    max_buffer_size: int = 100  # Maximum number of transcript segments to keep
+    max_buffer_size: int = 1000  # Increased to hold more segments
 
     model_config = SettingsConfigDict(
         env_file=".env",
