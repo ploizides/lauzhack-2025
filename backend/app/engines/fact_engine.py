@@ -14,13 +14,14 @@ except ImportError:
     from duckduckgo_search import DDGS  # Fallback for older package name
 from together import Together
 
-from config import (
+from backend.app.core.config import (
     settings,
     CLAIM_DETECTION_PROMPT,
     CLAIM_VERIFICATION_PROMPT,
     SEARCH_CONFIG,
 )
-from state_manager import state, FactCheckResult
+from backend.app.core.state_manager import state, FactCheckResult
+from backend.app.utils.logger_util import debug_logger
 
 logger = logging.getLogger(__name__)
 
@@ -312,6 +313,17 @@ class FactEngine:
                     state.add_fact_result(result)
                     state.mark_fact_check_performed()
                     logger.info(f"Fact check stored: {result.verdict}")
+
+                    # Log to JSON file
+                    debug_logger.log_fact_check(
+                        claim=result.claim,
+                        verdict=result.verdict,
+                        confidence=result.confidence,
+                        explanation=result.explanation,
+                        key_facts=result.key_facts,
+                        evidence_sources=result.evidence_sources,
+                        timestamp=result.timestamp
+                    )
 
                 # Mark task as done
                 state.fact_queue.task_done()

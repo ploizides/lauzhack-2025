@@ -10,8 +10,8 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 from together import Together
 
-from config import settings, TOPIC_EXTRACTION_PROMPT, TOPIC_CONFIG
-from state_manager import state
+from backend.app.core.config import settings, TOPIC_EXTRACTION_PROMPT, TOPIC_CONFIG
+from backend.app.core.state_manager import state
 
 logger = logging.getLogger(__name__)
 

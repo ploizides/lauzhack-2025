@@ -10,7 +10,7 @@ from datetime import datetime
 from typing import Deque, Dict, List, Optional
 import networkx as nx
 
-from config import settings
+from backend.app.core.config import settings
 
 
 @dataclass

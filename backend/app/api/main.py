@@ -8,16 +8,16 @@ import logging
 from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import AsyncGenerator
-
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import JSONResponse
 from deepgram import AsyncDeepgramClient
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, HTTPException
+from fastapi.responses import JSONResponse
+from deepgram import DeepgramClient
 from deepgram.core.events import EventType
 
-from config import settings
-from state_manager import state, TranscriptSegment
-from topic_engine import topic_engine
-from fact_engine import fact_engine
+from backend.app.core.config import settings
+from backend.app.core.state_manager import state, TranscriptSegment
+from backend.app.engines.topic_engine import topic_engine
+from backend.app.engines.fact_engine import fact_engine
 
 # Configure logging
 logging.basicConfig(
@@ -121,6 +121,124 @@ async def get_transcript():
         "final_segments": len([s for s in segments if s.is_final]),
         "transcript": transcript_text
     })
+
+
+@app.post("/process-audio")
+async def process_audio(file: UploadFile = File(...)):
+    """
+    Process an audio file and return transcription, topics, and fact-checks.
+
+    This endpoint is designed for demos - it processes a complete audio file
+    and returns all analysis results in one response.
+
+    Args:
+        file: Audio file (WAV, MP3, etc.)
+
+    Returns:
+        JSON with transcript, topics, and fact-check results
+    """
+    logger.info(f"Processing audio file: {file.filename}")
+
+    try:
+        # Read the audio file
+        audio_data = await file.read()
+
+        # Initialize Deepgram client
+        deepgram = DeepgramClient(api_key=settings.deepgram_api_key)
+
+        logger.info("Sending audio to Deepgram for transcription...")
+
+        # Send to Deepgram prerecorded API using the correct method
+        response = deepgram.listen.v1.media.transcribe_file(
+            request=audio_data,
+            model="nova-3",
+            smart_format=True,
+            punctuate=True,
+            paragraphs=True,
+            utterances=True,
+        )
+
+        # Extract transcript
+        transcript_data = response.results
+        if not transcript_data or not transcript_data.channels:
+            raise HTTPException(status_code=500, detail="No transcription results from Deepgram")
+
+        # Get the full transcript
+        alternatives = transcript_data.channels[0].alternatives
+        if not alternatives:
+            raise HTTPException(status_code=500, detail="No alternatives in transcription")
+
+        full_transcript = alternatives[0].transcript
+        paragraphs = alternatives[0].paragraphs.paragraphs if hasattr(alternatives[0], 'paragraphs') else []
+
+        logger.info(f"Transcription complete: {len(full_transcript)} characters")
+
+        # Process topics from paragraphs
+        topics_list = []
+        if paragraphs:
+            for i, para in enumerate(paragraphs[:5]):  # Process first 5 paragraphs for demo
+                para_text = " ".join([sentence.text for sentence in para.sentences])
+                if len(para_text) > 50:  # Only process substantial paragraphs
+                    topic_result = await topic_engine.extract_topic(para_text)
+                    if topic_result:
+                        topic, keywords = topic_result
+                        topics_list.append({
+                            "topic": topic,
+                            "keywords": keywords,
+                            "text_sample": para_text[:100] + "..."
+                        })
+
+        logger.info(f"Extracted {len(topics_list)} topics")
+
+        # Process fact-checking on key sentences
+        fact_checks = []
+        if paragraphs:
+            sentences_to_check = []
+            for para in paragraphs[:3]:  # Check first 3 paragraphs
+                for sentence in para.sentences[:2]:  # First 2 sentences per paragraph
+                    if len(sentence.text) > 30:  # Only substantial sentences
+                        sentences_to_check.append(sentence.text)
+
+            # Fact-check each sentence
+            for sentence in sentences_to_check[:5]:  # Limit to 5 for demo
+                logger.info(f"Fact-checking: {sentence[:50]}...")
+
+                # Run the full fact-checking pipeline
+                result = await fact_engine.check_fact(sentence)
+                if result:
+                    fact_checks.append({
+                        "claim": result.claim,
+                        "verdict": result.verdict,
+                        "confidence": result.confidence,
+                        "explanation": result.explanation,
+                        "key_facts": result.key_facts,
+                        "sources": result.evidence_sources
+                    })
+
+        logger.info(f"Completed {len(fact_checks)} fact-checks")
+
+        # Return comprehensive results
+        return JSONResponse(content={
+            "status": "success",
+            "filename": file.filename,
+            "transcript": {
+                "full_text": full_transcript,
+                "word_count": len(full_transcript.split()),
+                "paragraph_count": len(paragraphs) if paragraphs else 0
+            },
+            "topics": topics_list,
+            "fact_checks": fact_checks,
+            "summary": {
+                "total_topics": len(topics_list),
+                "total_fact_checks": len(fact_checks),
+                "verified_claims": len([f for f in fact_checks if f["verdict"] == "SUPPORTED"]),
+                "false_claims": len([f for f in fact_checks if f["verdict"] == "REFUTED"])
+            }
+        })
+
+    except Exception as e:
+        logger.error(f"Error processing audio: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error processing audio: {str(e)}")
 
 
 @app.websocket("/listen")

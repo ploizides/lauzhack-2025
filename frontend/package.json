@@ -1,0 +1,13 @@
+{
+  "name": "podcast-ai-assistant-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Frontend for Real-Time Podcast AI Assistant",
+  "scripts": {
+    "dev": "echo 'Frontend not yet implemented. See README.md'",
+    "build": "echo 'Frontend not yet implemented. See README.md'",
+    "start": "echo 'Frontend not yet implemented. See README.md'"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}
