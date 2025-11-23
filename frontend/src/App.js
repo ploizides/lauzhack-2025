@@ -35,8 +35,7 @@ function App() {
     <div className="app-container">
       {/* Logo */}
       <div className="logo">
-        <div className="logo-text">AMPLIFY</div>
-        <div className="logo-subtitle">Real-Time Fact Checking</div>
+        <img src="/amplify-logo.png" alt="Amplify Logo" className="logo-image" />
       </div>
 
       {/* Error Display */}

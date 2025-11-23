@@ -46,7 +46,7 @@ settings = Settings()
 # Load claim selection prompt
 CLAIM_SELECTION_PROMPT_FILE = BACKEND_DIR / "CLAIM_SELECTION_PROMPT.txt"
 if CLAIM_SELECTION_PROMPT_FILE.exists():
-    with open(CLAIM_SELECTION_PROMPT_FILE, "r") as f:
+    with open(CLAIM_SELECTION_PROMPT_FILE, "r", encoding="utf-8") as f:
         CLAIM_SELECTION_PROMPT = f.read()
 else:
     # Fallback if file doesn't exist yet
@@ -56,10 +56,10 @@ Recent conversation:
 {text}
 
 STRICT CRITERIA - A claim MUST be:
-✓ A statement of OBJECTIVE FACT (can be proven true/false)
-✓ Specific and concrete (includes numbers, dates, names, events)
-✓ Something that can be verified through reliable sources
-✓ Complete and unambiguous
+ A statement of OBJECTIVE FACT (can be proven true/false)
+ Specific and concrete (includes numbers, dates, names, events)
+ Something that can be verified through reliable sources
+ Complete and unambiguous
 
 Priority claims:
 - Statistical data ("X% of Y...", "N million people...")
@@ -69,12 +69,12 @@ Priority claims:
 - Opinions ("I think", "I believe", "in my view")
 
 DO NOT SELECT:
-❌ Subjective statements ("it's good", "best", "beautiful")
-❌ Vague claims without specifics ("many people", "some say")
-❌ Hypotheticals or future predictions ("will be", "might")
-❌ Questions or greetings
-❌ Incomplete fragments
-❌ Personal anecdotes without verifiable details
+ Subjective statements ("it's good", "best", "beautiful")
+ Vague claims without specifics ("many people", "some say")
+ Hypotheticals or future predictions ("will be", "might")
+ Questions or greetings
+ Incomplete fragments
+ Personal anecdotes without verifiable details
 
 Select up to {max_claims} claims. If unsure, DON'T include it.
 
