@@ -21,7 +21,6 @@ from backend.app.core.config import (
     SEARCH_CONFIG,
 )
 from backend.app.core.state_manager import state, FactCheckResult
-from backend.app.utils.logger_util import debug_logger
 
 logger = logging.getLogger(__name__)
 
@@ -314,16 +313,7 @@ class FactEngine:
                     state.mark_fact_check_performed()
                     logger.info(f"Fact check stored: {result.verdict}")
 
-                    # Log to JSON file
-                    debug_logger.log_fact_check(
-                        claim=result.claim,
-                        verdict=result.verdict,
-                        confidence=result.confidence,
-                        explanation=result.explanation,
-                        key_facts=result.key_facts,
-                        evidence_sources=result.evidence_sources,
-                        timestamp=result.timestamp
-                    )
+                    # Note: Logging is handled by stream_processor when monitoring fact results
 
                 # Mark task as done
                 state.fact_queue.task_done()

@@ -18,6 +18,7 @@ from backend.app.core.config import settings
 from backend.app.core.state_manager import state, TranscriptSegment
 from backend.app.engines.topic_engine import topic_engine
 from backend.app.engines.fact_engine import fact_engine
+from backend.app.services.stream_processor import stream_processor
 
 # Configure logging
 logging.basicConfig(
@@ -239,6 +240,73 @@ async def process_audio(file: UploadFile = File(...)):
     except Exception as e:
         logger.error(f"Error processing audio: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error processing audio: {str(e)}")
+
+
+# ============================================================================
+# STREAMING API ENDPOINTS
+# Server-side streaming for MVP demo
+# ============================================================================
+
+@app.post("/api/stream/start")
+async def start_stream():
+    """
+    Start server-side streaming of the hardcoded audio file.
+
+    This endpoint:
+    1. Starts processing the audio file in chunks (simulating real-time)
+    2. Runs transcription, topic detection, and fact-checking
+    3. Writes results incrementally to stream_output.json
+
+    Returns:
+        Status and metadata about the stream
+    """
+    result = await stream_processor.start_stream()
+
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+
+    return result
+
+
+@app.post("/api/stream/stop")
+async def stop_stream():
+    """
+    Stop the current streaming session.
+
+    Returns:
+        Confirmation of stream stop
+    """
+    result = await stream_processor.stop_stream()
+
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+
+    return result
+
+
+@app.get("/api/stream/status")
+async def get_stream_status():
+    """
+    Get the current status of the stream.
+
+    Returns:
+        Current streaming status, progress, and counts
+    """
+    return stream_processor.get_status()
+
+
+@app.get("/api/stream/results")
+async def get_stream_results():
+    """
+    Get the complete current results of the stream.
+
+    This returns the same data that's written to stream_output.json,
+    providing an API alternative to reading the file directly.
+
+    Returns:
+        Complete results including transcripts, topics, and fact-checks
+    """
+    return stream_processor.get_results()
 
 
 @app.websocket("/listen")
