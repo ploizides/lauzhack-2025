@@ -4,8 +4,13 @@ Handles environment variables, API keys, and LLM prompts.
 """
 
 import os
+from pathlib import Path
 from typing import Optional
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Get the backend directory path
+BACKEND_DIR = Path(__file__).parent.parent.parent
+ENV_FILE = BACKEND_DIR / ".env"
 
 
 class Settings(BaseSettings):
@@ -19,6 +24,8 @@ class Settings(BaseSettings):
     # Configuration Parameters
     fact_check_rate_limit: int = 10  # seconds between fact checks
     topic_update_threshold: int = 5  # finalized sentences before topic update
+    claim_selection_batch_size: int = 10  # sentences to accumulate before selecting claims
+    max_claims_per_batch: int = 2  # max claims to select from each batch
 
     # Model Configuration
     together_model: str = "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo"
@@ -27,7 +34,7 @@ class Settings(BaseSettings):
     max_buffer_size: int = 1000  # Increased to hold more segments
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=str(ENV_FILE),
         env_file_encoding="utf-8",
         case_sensitive=False
     )
@@ -35,6 +42,53 @@ class Settings(BaseSettings):
 
 # Global settings instance
 settings = Settings()
+
+# Load claim selection prompt
+CLAIM_SELECTION_PROMPT_FILE = BACKEND_DIR / "CLAIM_SELECTION_PROMPT.txt"
+if CLAIM_SELECTION_PROMPT_FILE.exists():
+    with open(CLAIM_SELECTION_PROMPT_FILE, "r", encoding="utf-8") as f:
+        CLAIM_SELECTION_PROMPT = f.read()
+else:
+    # Fallback if file doesn't exist yet
+    CLAIM_SELECTION_PROMPT = """You are analyzing a conversation transcript to identify ONLY verifiable factual claims worth fact-checking.
+
+Recent conversation:
+{text}
+
+STRICT CRITERIA - A claim MUST be:
+ A statement of OBJECTIVE FACT (can be proven true/false)
+ Specific and concrete (includes numbers, dates, names, events)
+ Something that can be verified through reliable sources
+ Complete and unambiguous
+
+Priority claims:
+- Statistical data ("X% of Y...", "N million people...")
+- Historical facts ("In 2020, X happened...")
+- Scientific claims ("Studies show...", "Research found...")
+- Attributions ("Person X said/did Y")
+- Opinions ("I think", "I believe", "in my view")
+
+DO NOT SELECT:
+ Subjective statements ("it's good", "best", "beautiful")
+ Vague claims without specifics ("many people", "some say")
+ Hypotheticals or future predictions ("will be", "might")
+ Questions or greetings
+ Incomplete fragments
+ Personal anecdotes without verifiable details
+
+Select up to {max_claims} claims. If unsure, DON'T include it.
+
+Respond in JSON:
+{{{{
+    "selected_claims": [
+        {{{{
+            "claim": "complete factual claim",
+            "reason": "why verifiable"
+        }}}}
+    ]
+}}}}
+
+If NO verifiable claims exist, return: {{{{"selected_claims": []}}}}"""
 
 
 # ============================================================================
@@ -116,9 +170,9 @@ Examples:
 # ============================================================================
 
 SEARCH_CONFIG = {
-    "max_results": 3,  # Number of search results to retrieve
+    "max_results": 7,  # Fetch more to account for filtering
     "region": "wt-wt",  # Worldwide search
-    "safesearch": "moderate",
+    "safesearch": "strict",  # Strict filtering for inappropriate content
     "timeout": 10,  # seconds
 }
 

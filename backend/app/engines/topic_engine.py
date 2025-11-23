@@ -3,15 +3,20 @@ Topic Engine for Real-Time Podcast AI Assistant.
 Handles semantic drift detection and topic tree updates.
 """
 
+import asyncio
 import json
 import logging
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 import numpy as np
 from together import Together
+try:
+    from ddgs import DDGS
+except ImportError:
+    from duckduckgo_search import DDGS  # Fallback for older package name
 
-from config import settings, TOPIC_EXTRACTION_PROMPT, TOPIC_CONFIG
-from state_manager import state
+from backend.app.core.config import settings, TOPIC_EXTRACTION_PROMPT, TOPIC_CONFIG
+from backend.app.core.state_manager import state
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +30,61 @@ class TopicEngine:
     def __init__(self):
         self.client = Together(api_key=settings.together_api_key)
         self.embedding_cache: Dict[str, np.ndarray] = {}
+        self.search_client = DDGS()
+
+    async def search_topic_image(self, topic: str, keywords: List[str]) -> Optional[str]:
+        """
+        Search for a relevant image for the topic.
+
+        Args:
+            topic: The topic name
+            keywords: Topic keywords to enhance search
+
+        Returns:
+            URL of the most relevant image, or None if search fails
+        """
+        try:
+            # Create search query from topic and keywords
+            search_terms = [topic] + keywords[:3]  # Use top 3 keywords
+            query = " ".join(search_terms)
+
+            logger.info(f"Searching images for: {query}")
+            print(f"🖼️  Searching image for: {query}")
+
+            # Run image search in thread pool
+            loop = asyncio.get_event_loop()
+            results = await loop.run_in_executor(
+                None,
+                lambda: list(
+                    self.search_client.images(
+                        query,  # Changed from keywords= to positional argument
+                        region="wt-wt",
+                        safesearch="moderate",
+                        max_results=3,
+                    )
+                ),
+            )
+
+            print(f"🔍 Image search returned {len(results) if results else 0} results")
+
+            if results and len(results) > 0:
+                # Return the first (most relevant) image URL
+                image_url = results[0].get("image")
+                print(f"   First result: {results[0]}")
+                if image_url:
+                    print(f"✅ Found image: {image_url[:80]}...")
+                    return image_url
+                else:
+                    print(f"❌ No 'image' key in result")
+
+            print(f"⚠️  No images found for: {query}")
+            logger.warning(f"No images found for: {query}")
+            return None
+
+        except Exception as e:
+            print(f"❌ Image search error: {e}")
+            logger.error(f"Image search failed: {e}")
+            return None
 
     async def extract_topic(self, text: str) -> Optional[Tuple[str, List[str]]]:
         """
@@ -147,34 +207,56 @@ class TopicEngine:
         # Ensure in [0, 1] range
         return float(max(0.0, min(1.0, similarity)))
 
-    def detect_topic_shift(self, new_topic: str) -> bool:
+    def find_existing_topic(self, new_topic: str) -> Optional[str]:
         """
-        Detect if there's a significant topic shift.
+        Check if this topic already exists in the tree.
+
+        If a highly similar topic exists, return its ID instead of creating a duplicate.
+
+        Args:
+            new_topic: The new topic text to compare
+
+        Returns:
+            topic_id if match found, None otherwise
+        """
+        if len(state.topic_tree.nodes) == 0:
+            return None
+
+        # Check all existing topics
+        for topic_id in state.topic_tree.nodes:
+            node_data = state.topic_tree.nodes[topic_id]["data"]
+            topic_text = node_data.topic
+
+            similarity = self.compute_similarity(topic_text, new_topic)
+
+            # If very similar, consider it the same topic
+            if similarity >= TOPIC_CONFIG["similarity_threshold"]:
+                logger.info(f"Found existing topic: '{topic_text}' (similarity: {similarity:.2f})")
+                return topic_id
+
+        return None
+
+    def detect_topic_shift(self, new_topic: str) -> Tuple[bool, Optional[str]]:
+        """
+        Check if this is a new topic or returning to an existing one.
 
         Args:
             new_topic: Newly extracted topic
 
         Returns:
-            True if this represents a new topic (shift detected)
+            Tuple of (is_new_topic, existing_topic_id)
+            - is_new_topic: True if we need to create a new topic node
+            - existing_topic_id: ID of existing topic if found, None otherwise
         """
-        # If no current topic, this is definitely new
-        if state.current_topic_id is None:
-            return True
+        # Check if this topic already exists
+        existing_id = self.find_existing_topic(new_topic)
 
-        # Get current topic text
-        current_node = state.topic_tree.nodes[state.current_topic_id]["data"]
-        current_topic_text = current_node.topic
-
-        # Compute similarity
-        similarity = self.compute_similarity(current_topic_text, new_topic)
-
-        logger.info(
-            f"Topic similarity: {similarity:.2f} "
-            f"(current: '{current_topic_text}', new: '{new_topic}')"
-        )
-
-        # If similarity is below threshold, it's a new topic
-        return similarity < TOPIC_CONFIG["similarity_threshold"]
+        if existing_id:
+            # Found existing topic - reuse it
+            return (False, existing_id)
+        else:
+            # New topic - will be created
+            return (True, None)
 
     async def update_topic_tree(self, text: str) -> Optional[str]:
         """
@@ -197,23 +279,51 @@ class TopicEngine:
 
             topic, keywords = result
 
-            # Check if this is a new topic (semantic drift)
-            if self.detect_topic_shift(topic):
-                # Create new topic node
+            # Check if this topic already exists
+            is_new_topic, existing_topic_id = self.detect_topic_shift(topic)
+
+            if is_new_topic:
+                # Create new topic node (without image for now)
                 topic_id = state.add_topic_node(
-                    topic=topic, keywords=keywords, timestamp=datetime.now()
+                    topic=topic,
+                    keywords=keywords,
+                    timestamp=datetime.now()
                 )
-                logger.info(f"New topic detected: {topic} (id={topic_id})")
+                logger.info(f"New topic: {topic} (id={topic_id})")
+
+                # Search for image asynchronously (don't block)
+                asyncio.create_task(self._search_and_record_image(topic_id, topic, keywords))
+
                 return topic_id
             else:
-                # Update existing topic
-                state.update_current_topic()
-                logger.info(f"Continuing current topic: {topic}")
-                return state.current_topic_id
+                # Returning to existing topic - switch to it
+                state.switch_to_topic(existing_topic_id)
+                logger.info(f"Returning to existing topic: {topic} (id={existing_topic_id})")
+                return existing_topic_id
 
         except Exception as e:
             logger.error(f"Failed to update topic tree: {e}")
             return None
+
+    async def _search_and_record_image(self, topic_id: str, topic: str, keywords: List[str]) -> None:
+        """
+        Search for topic image and record it (called as background task).
+
+        Args:
+            topic_id: Topic ID
+            topic: Topic name
+            keywords: Topic keywords
+        """
+        try:
+            print(f"🔄 Starting image search task for: {topic}")
+            image_url = await self.search_topic_image(topic, keywords)
+            print(f"📝 Recording image for {topic_id}: {image_url}")
+            state.add_topic_image(topic_id, topic, image_url)
+            print(f"✅ Image recorded successfully")
+        except Exception as e:
+            print(f"❌ Failed to search/record image: {e}")
+            logger.error(f"Failed to search/record image: {e}")
+            state.add_topic_image(topic_id, topic, None)
 
     def get_topic_summary(self) -> Dict:
         """

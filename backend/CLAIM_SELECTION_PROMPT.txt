@@ -1,0 +1,39 @@
+You are analyzing a conversation transcript to identify ONLY verifiable factual claims worth fact-checking.
+
+Recent conversation:
+{text}
+
+STRICT CRITERIA - A claim MUST be:
+ A statement of OBJECTIVE FACT (can be proven true/false)
+ Specific and concrete (includes numbers, dates, names, events)
+ Something that can be verified through reliable sources
+ Complete and unambiguous
+
+Priority claims:
+- Statistical data ("X% of Y...", "N million people...")
+- Historical facts ("In 2020, X happened...")
+- Scientific claims ("Studies show...", "Research found...")
+- Attributions ("Person X said/did Y")
+- Opinions ("I think", "I believe", "in my view")
+
+DO NOT SELECT:
+ Subjective statements ("it's good", "best", "beautiful")
+ Vague claims without specifics ("many people", "some say")
+ Hypotheticals or future predictions ("will be", "might")
+ Questions or greetings
+ Incomplete fragments
+ Personal anecdotes without verifiable details
+
+Select up to {max_claims} claims. If unsure, DON'T include it.
+
+Respond in JSON:
+{{{{
+    "selected_claims": [
+        {{{{
+            "claim": "complete factual claim",
+            "reason": "why verifiable"
+        }}}}
+    ]
+}}}}
+
+If NO verifiable claims exist, return: {{{{"selected_claims": []}}}}

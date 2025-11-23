@@ -1,216 +1,234 @@
 # Real-Time Podcast AI Assistant
 
-An AI-powered assistant for live podcast transcription, topic tracking, and real-time fact-checking.
+A real-time AI assistant for podcast transcription, topic tracking, fact-checking, and intelligent image search. Built with FastAPI, Deepgram, and Together.ai.
 
 ## Features
 
-- **Live Transcription**: Real-time audio transcription using Deepgram Flux
-- **Topic Tracking**: Automatic semantic drift detection and conversation timeline
-- **Fact Checking**: 3-step verification pipeline (Detect → Search → Verify)
-- **Dual-Loop Architecture**: Fast loop for topics, slow loop for fact-checking
-- **WebSocket API**: Real-time communication with minimal latency
+### 🎙️ Real-Time Audio Processing
+- **Live Transcription**: Deepgram Nova-3 for WebSocket-based speech-to-text
+- **Streaming Architecture**: Non-blocking async processing with multiple update loops
 
-## Architecture
+### 📊 Topic Tracking
+- **Semantic Analysis**: Automatic topic detection and extraction
+- **Topic Tree**: NetworkX-based DAG tracking conversation flow
+- **Smart Images**: Context-aware image search decoupled from topic updates
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                     Client (Audio Stream)                    │
-└──────────────────────────┬──────────────────────────────────┘
-                           │ WebSocket
-                           ▼
-┌─────────────────────────────────────────────────────────────┐
-│                       FastAPI Server                         │
-│  ┌────────────────────────────────────────────────────────┐ │
-│  │              Deepgram (Transcription)                   │ │
-│  └──────────────┬─────────────────────────────────────────┘ │
-│                 │                                             │
-│     ┌───────────▼──────────┐       ┌────────────────────┐   │
-│     │   FAST LOOP          │       │   SLOW LOOP         │   │
-│     │   Topic Tracker      │       │   Fact Checker      │   │
-│     │   (NetworkX Graph)   │       │   (3-Step Pipeline) │   │
-│     └──────────────────────┘       └────────────────────┘   │
-│                                                               │
-│              State Manager (Central State)                   │
-└─────────────────────────────────────────────────────────────┘
-```
+### ✓ Fact-Checking Pipeline
+- **Claim Selection**: LLM-powered batched claim detection with strict filtering
+- **Web Search**: DuckDuckGo integration with URL filtering and SafeSearch
+- **Verification**: 3-step pipeline (Detect → Search → Verify)
 
-## Installation
-
-1. **Clone the repository**:
-   ```bash
-   cd lauzhack-2025
-   ```
-
-2. **Install dependencies**:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-3. **Set up environment variables**:
-   ```bash
-   cp .env.example .env
-   ```
-
-   Edit `.env` and add your API keys:
-   ```
-   DEEPGRAM_API_KEY=your_deepgram_key
-   TOGETHER_API_KEY=your_together_ai_key
-   HUGGINGFACE_API_KEY=your_hf_key  # Optional
-   ```
-
-4. **Verify setup** (optional but recommended):
-   ```bash
-   python verify_setup.py
-   ```
-
-## Usage
-
-### Start the Server
-
-```bash
-python main.py
-```
-
-The server will start on `http://localhost:8000`
-
-### API Endpoints
-
-- `GET /` - Health check
-- `GET /stats` - System statistics
-- `GET /topics` - Topic timeline
-- `GET /facts` - Recent fact-check results
-- `WebSocket /listen` - Main audio streaming endpoint
-- `WebSocket /facts/stream` - Real-time fact results stream
-
-### WebSocket Client Example
-
-```python
-import asyncio
-import websockets
-import pyaudio
-
-async def stream_audio():
-    uri = "ws://localhost:8000/listen"
-
-    async with websockets.connect(uri) as websocket:
-        # Configure audio
-        audio = pyaudio.PyAudio()
-        stream = audio.open(
-            format=pyaudio.paInt16,
-            channels=1,
-            rate=16000,
-            input=True,
-            frames_per_buffer=8000
-        )
-
-        # Stream audio
-        while True:
-            data = stream.read(8000)
-            await websocket.send(data)
-
-            # Receive transcription
-            response = await websocket.recv()
-            print(response)
-
-asyncio.run(stream_audio())
-```
-
-## Configuration
-
-Edit `config.py` or set environment variables:
-
-- `FACT_CHECK_RATE_LIMIT`: Seconds between fact checks (default: 10)
-- `TOPIC_UPDATE_THRESHOLD`: Sentences before topic update (default: 5)
-- `TOGETHER_MODEL`: LLM model to use (default: Llama-3.1-70B)
+### ⚡ Multi-Loop Architecture
+- **Fast Loop** (2 sentences ~32s): Image updates
+- **Medium Loop** (3 sentences ~48s): Topic updates  
+- **Slow Loop** (5 sentences ~80s): Claim selection and fact-checking
 
 ## Project Structure
 
 ```
 lauzhack-2025/
-├── main.py              # FastAPI server & WebSocket endpoints
-├── config.py            # Configuration & prompts
-├── state_manager.py     # Central state management
-├── topic_engine.py      # Topic tracking & semantic drift
-├── fact_engine.py       # 3-step fact-checking pipeline
-├── requirements.txt     # Python dependencies
-├── .env.example         # Environment template
-└── README.md           # This file
+├── backend/
+│   ├── app/
+│   │   ├── api/
+│   │   │   └── main.py              # FastAPI app & WebSocket endpoint
+│   │   ├── core/
+│   │   │   ├── config.py            # Settings, prompts, configuration
+│   │   │   └── state_manager.py     # Centralized state management
+│   │   ├── engines/
+│   │   │   ├── fact_engine.py       # Fact-checking pipeline
+│   │   │   └── topic_engine.py      # Topic extraction & image search
+│   │   ├── services/
+│   │   │   └── stream_processor.py  # File-based streaming for testing
+│   │   └── utils/
+│   │       └── logger_util.py       # Logging utilities
+│   ├── tests/
+│   │   ├── test_audio/
+│   │   │   └── LexNuclear.wav       # Test audio file
+│   │   └── test_wav_stream.py       # Streaming test client
+│   ├── .env.example                  # Environment template
+│   ├── run.py                        # Server entry point
+│   └── requirements.txt              # Python dependencies
+├── env/                              # Virtual environment
+└── README.md
 ```
 
-## How It Works
+## Getting Started
 
-### Fast Loop (Topic Tracking)
+### Prerequisites
 
-1. Partial transcripts arrive continuously
-2. Every 5 finalized sentences → extract topic using LLM
-3. Compare with current topic using embeddings
-4. If semantic drift detected → create new topic node
-5. Update NetworkX graph with topic timeline
+- Python 3.11+
+- API Keys:
+  - [Deepgram](https://deepgram.com/) (speech-to-text)
+  - [Together.ai](https://together.ai/) (LLM inference)
 
-### Slow Loop (Fact Checking)
+### Installation
 
-1. **Detect**: LLM determines if sentence contains factual claim
-2. **Search**: DuckDuckGo finds evidence (with source links)
-3. **Verify**: LLM compares claim vs evidence
-4. Rate-limited to 1 check per 10 seconds (configurable)
-5. Results stored and streamed to clients
+1. **Clone and navigate to project:**
+   ```bash
+   cd /path/to/lauzhack-2025
+   ```
+
+2. **Activate virtual environment:**
+   ```bash
+   source env/bin/activate
+   ```
+
+3. **Install dependencies** (if needed):
+   ```bash
+   pip install -r backend/requirements.txt
+   ```
+
+4. **Configure API keys:**
+   ```bash
+   cd backend
+   cp .env.example .env
+   # Edit .env and add your API keys:
+   # DEEPGRAM_API_KEY=your_key_here
+   # TOGETHER_API_KEY=your_key_here
+   ```
+
+### Running the Server
+
+```bash
+# From project root with venv activated
+python backend/run.py
+```
+
+Server runs on **http://localhost:8765**
+
+### Testing with Audio File
+
+```bash
+# Terminal 1: Start server
+source env/bin/activate
+python backend/run.py
+
+# Terminal 2: Stream test audio
+cd backend/tests
+python test_wav_stream.py
+```
+
+### API Endpoints
+
+- `GET /` - Health check
+- `GET /health` - Detailed health status
+- `POST /api/stream/start` - Start server-side streaming (for testing)
+- `WS /ws` - WebSocket endpoint for real-time audio streaming
+
+## Configuration
+
+### Timing Thresholds (`backend/app/core/config.py`)
+
+Based on Deepgram's ~16 seconds per "final sentence":
+
+```python
+topic_update_threshold: int = 3        # 3 sentences = ~48s
+claim_selection_batch_size: int = 5    # 5 sentences = ~80s  
+image_update_threshold: int = 2        # 2 sentences = ~32s
+max_claims_per_batch: int = 2          # Max claims per batch
+```
+
+### LLM Configuration
+
+```python
+together_model: str = "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo"
+```
+
+### Search Configuration
+
+```python
+SEARCH_CONFIG = {
+    "max_results": 5,
+    "safesearch": "strict",    # Filters inappropriate content
+    "region": "wt-wt"          # Worldwide
+}
+```
+
+## Architecture
+
+### State Management
+- **Centralized State**: `StateManager` class handles all application state
+- **Transcript Buffer**: Deque of recent segments
+- **Topic Tree**: NetworkX DiGraph tracking conversation flow
+- **Fact Queue**: Async queue for fact-checking tasks
+
+### WebSocket Flow
+
+1. **Client connects** → Deepgram WebSocket established
+2. **Audio chunks sent** → Real-time transcription
+3. **Transcript received** → Added to state buffer
+4. **Multi-loop processing**:
+   - Image updates (every 2 sentences)
+   - Topic updates (every 3 sentences)
+   - Claim selection (every 5 sentences)
+5. **Results streamed** → Client receives updates via WebSocket
+
+### Fact-Checking Pipeline
+
+```
+Sentences → Batch Selection → Search Query Generation → 
+Web Search (filtered) → Evidence Verification → Result
+```
+
+## Key Features
+
+### Strict Claim Filtering
+The claim selection prompt filters out:
+- Opinions and subjective statements
+- Vague claims without specifics
+- Hypotheticals and predictions
+- Questions and greetings
+- Incomplete fragments
+
+### URL Filtering
+Blocks inappropriate domains from search results:
+- Adult content sites
+- Gambling/casino sites
+- Other inappropriate content
+
+### Decoupled Image Updates
+Images update independently from topics for better visual engagement:
+- Uses current topic + keywords + recent context
+- More frequent than topic changes
+- Better user experience
 
 ## Development
 
-### Testing
+### Log Analysis
 
+Monitor real-time operations:
 ```bash
-# Run the server in development mode
-python main.py
-
-# In another terminal, test the API
-curl http://localhost:8000/stats
+# Watch server output for:
+🖼️  Image search triggered
+📊 Topic tree updated
+✅ Claim selected
+🔍 Search query generated
 ```
 
-### TODO Improvements
+### Output File
 
-- [ ] Replace mock embeddings with sentence-transformers
-- [ ] Add speaker diarization
-- [ ] Implement conversation export
-- [ ] Add authentication
-- [ ] Create web UI
-- [ ] Add database persistence
-- [ ] Implement caching for LLM responses
-
-## Tech Stack
-
-- **Framework**: FastAPI 0.115.0
-- **Audio**: Deepgram SDK 5.3.0
-- **LLM**: Together.ai 1.3.4 (Llama-3.1-70B)
-- **Search**: DuckDuckGo Search 8.1.1
-- **Graph**: NetworkX 3.4.2
-- **Async**: Python asyncio
-- **Python**: 3.8+ required
-
-## License
-
-MIT License - Built for LauzHack 2025
+Server-side streaming creates `stream_output.json` with all events for analysis.
 
 ## Troubleshooting
 
-**Issue**: Deepgram connection fails
-- Check API key in `.env`
-- Ensure audio format is PCM 16kHz mono
+**Port already in use:**
+```bash
+lsof -ti:8765 | xargs kill -9
+```
 
-**Issue**: Rate limiting on search
-- Increase `FACT_CHECK_RATE_LIMIT` in `.env`
-- Reduce `SEARCH_CONFIG.max_results` in `config.py`
+**Missing dependencies:**
+```bash
+source env/bin/activate
+pip install -r backend/requirements.txt
+```
 
-**Issue**: LLM responses fail to parse
-- Check Together.ai API key
-- Verify model availability
-- Check logs for JSON parsing errors
+**API key errors:**
+Check `backend/.env` file has valid keys.
 
-## Contributing
+## License
 
-This is a hackathon MVP. Contributions welcome!
+See [LICENSE](LICENSE) file for details.
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Submit a pull request
+## Credits
+
+Created for LauzHack 2025.
