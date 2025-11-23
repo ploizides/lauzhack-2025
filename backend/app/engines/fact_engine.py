@@ -255,9 +255,23 @@ Output ONLY the search query, nothing else."""
                 ),
             )
 
-            # Extract relevant fields and include source links
+            # Blocklist for inappropriate domains
+            blocked_domains = [
+                'porn', 'xxx', 'sex', 'adult', 'xvideos', 'pornhub', 
+                'xhamster', 'redtube', 'youporn', 'tube8', 'spankbang',
+                'xnxx', 'onlyfans', 'escort', 'casino', 'gambling'
+            ]
+            
+            # Extract relevant fields and filter inappropriate URLs
             evidence = []
             for result in results:
+                href = result.get("href", "").lower()
+                
+                # Skip if URL contains blocked keywords
+                if any(blocked in href for blocked in blocked_domains):
+                    logger.warning(f"Blocked inappropriate URL: {href[:50]}...")
+                    continue
+                
                 evidence.append(
                     {
                         "title": result.get("title", ""),
@@ -266,7 +280,7 @@ Output ONLY the search query, nothing else."""
                     }
                 )
 
-            logger.info(f"Found {len(evidence)} evidence sources")
+            logger.info(f"Found {len(evidence)} evidence sources (after filtering)")
             return evidence, search_query
 
         except Exception as e:

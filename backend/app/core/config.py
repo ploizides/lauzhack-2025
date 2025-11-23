@@ -50,39 +50,45 @@ if CLAIM_SELECTION_PROMPT_FILE.exists():
         CLAIM_SELECTION_PROMPT = f.read()
 else:
     # Fallback if file doesn't exist yet
-    CLAIM_SELECTION_PROMPT = """You are analyzing a conversation transcript to identify important factual claims worth fact-checking.
+    CLAIM_SELECTION_PROMPT = """You are analyzing a conversation transcript to identify ONLY verifiable factual claims worth fact-checking.
 
-Here is the recent conversation:
-
+Recent conversation:
 {text}
 
-Your task:
-1. Identify VERIFIABLE FACTUAL CLAIMS in this conversation
-2. Prioritize claims that are:
-   - Specific and concrete (numbers, dates, events, names)
-   - Potentially controversial or surprising
-   - About objective facts that can be verified
-3. Extract up to {max_claims} complete claims with enough context
+STRICT CRITERIA - A claim MUST be:
+✓ A statement of OBJECTIVE FACT (can be proven true/false)
+✓ Specific and concrete (includes numbers, dates, names, events)
+✓ Something that can be verified through reliable sources
+✓ Complete and unambiguous
 
-DO NOT select:
-- Pure opinions ("I think...", "I feel...")
-- Vague statements without specifics
-- Greetings or filler words
-- Questions
+Priority claims:
+- Statistical data ("X% of Y...", "N million people...")
+- Historical facts ("In 2020, X happened...")
+- Scientific claims ("Studies show...", "Research found...")
+- Attributions ("Person X said/did Y")
+- Opinions ("I think", "I believe", "in my view")
 
-Important: Extract the FULL CLAIM with context, not just fragments.
+DO NOT SELECT:
+❌ Subjective statements ("it's good", "best", "beautiful")
+❌ Vague claims without specifics ("many people", "some say")
+❌ Hypotheticals or future predictions ("will be", "might")
+❌ Questions or greetings
+❌ Incomplete fragments
+❌ Personal anecdotes without verifiable details
 
-Respond in JSON format:
+Select up to {max_claims} claims. If unsure, DON'T include it.
+
+Respond in JSON:
 {{{{
     "selected_claims": [
         {{{{
-            "claim": "the complete factual claim with sufficient context",
-            "reason": "why this is important to verify"
+            "claim": "complete factual claim",
+            "reason": "why verifiable"
         }}}}
     ]
 }}}}
 
-If no important factual claims exist, return: {{{{"selected_claims": []}}}}"""
+If NO verifiable claims exist, return: {{{{"selected_claims": []}}}}"""
 
 
 # ============================================================================
@@ -164,9 +170,9 @@ Examples:
 # ============================================================================
 
 SEARCH_CONFIG = {
-    "max_results": 3,  # Number of search results to retrieve
+    "max_results": 7,  # Fetch more to account for filtering
     "region": "wt-wt",  # Worldwide search
-    "safesearch": "moderate",
+    "safesearch": "strict",  # Strict filtering for inappropriate content
     "timeout": 10,  # seconds
 }
 
