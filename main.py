@@ -133,62 +133,67 @@ async def websocket_endpoint(websocket: WebSocket):
     try:
         deepgram = AsyncDeepgramClient(api_key=settings.deepgram_api_key)
 
-        # Connect to Deepgram v2 using async context manager
-        # Documentation: https://developers.deepgram.com/docs/flux/quickstart
-        # Valid parameters: model, encoding, sample_rate, eot_threshold, eager_eot_threshold, eot_timeout_ms
-        async with deepgram.listen.v2.connect(
-            model="flux-general-en",  # Flux model for real-time streaming
-            encoding="linear16",  # PCM 16-bit audio
-            sample_rate="48000",  # Match WAV file (48kHz)
-        ) as dg_connection:
+        # Connect to Deepgram using v1 live API
+        # Model: nova-3 for best accuracy
+        options = {
+            "model": "nova-3",
+            "encoding": "linear16",
+            "sample_rate": "48000",
+        }
+        async with deepgram.listen.v1.connect(**options) as dg_connection:
 
             # Event handlers for Deepgram
             def on_message(message):
                 """Handle incoming transcription from Deepgram."""
                 try:
-                    # Check if message has transcript attribute
-                    if hasattr(message, 'transcript') and message.transcript:
-                        sentence = message.transcript
-                        is_final = getattr(message, 'is_final', True)
+                    # Deepgram v1 message structure: message.channel.alternatives[0].transcript
+                    if hasattr(message, 'channel') and hasattr(message.channel, 'alternatives'):
+                        alternatives = message.channel.alternatives
+                        if len(alternatives) > 0 and hasattr(alternatives[0], 'transcript'):
+                            sentence = alternatives[0].transcript
+                            
+                            # Skip empty transcripts
+                            if not sentence or len(sentence.strip()) == 0:
+                                return
+                            
+                            # Check if this is a final result
+                            is_final = getattr(message, 'is_final', True)
 
-                        # Get confidence from words if available
-                        confidence = 1.0
-                        if hasattr(message, 'words') and message.words and len(message.words) > 0:
-                            confidence = sum(w.confidence for w in message.words) / len(message.words)
+                            # Get confidence from alternatives
+                            confidence = getattr(alternatives[0], 'confidence', 1.0)
 
-                        # Create transcript segment
-                        segment = TranscriptSegment(
-                            text=sentence,
-                            is_final=is_final,
-                            timestamp=datetime.now(),
-                            confidence=confidence,
-                        )
+                            # Create transcript segment
+                            segment = TranscriptSegment(
+                                text=sentence,
+                                is_final=is_final,
+                                timestamp=datetime.now(),
+                                confidence=confidence,
+                            )
 
-                        # Add to state buffer
-                        state.add_transcript_segment(segment)
+                            # Add to state buffer
+                            state.add_transcript_segment(segment)
 
-                        # Send transcript to client (schedule as task to avoid blocking)
-                        asyncio.create_task(websocket.send_json(
-                            {
-                                "type": "transcript",
-                                "text": sentence,
-                                "is_final": is_final,
-                                "confidence": segment.confidence,
-                                "timestamp": segment.timestamp.isoformat(),
-                            }
-                        ))
+                            # Send transcript to client (schedule as task to avoid blocking)
+                            asyncio.create_task(websocket.send_json(
+                                {
+                                    "type": "transcript",
+                                    "text": sentence,
+                                    "is_final": is_final,
+                                    "confidence": segment.confidence,
+                                    "timestamp": segment.timestamp.isoformat(),
+                                }
+                            ))
 
-                        logger.info(f"[{'FINAL' if is_final else 'PARTIAL'}] {sentence}")
+                            logger.info(f"[{'FINAL' if is_final else 'PARTIAL'}] {sentence}")
 
-                        # FAST LOOP: Update topics when threshold is reached
-                        if is_final and state.should_update_topics():
-                            finalized_text = state.consume_finalized_sentences()
-                            asyncio.create_task(update_topics_async(websocket, finalized_text))
+                            # FAST LOOP: Update topics when threshold is reached
+                            if is_final and state.should_update_topics():
+                                finalized_text = state.consume_finalized_sentences()
+                                asyncio.create_task(update_topics_async(websocket, finalized_text))
 
-                        # SLOW LOOP: Queue fact check for finalized sentences
-                        # Use create_task to avoid blocking the WebSocket heartbeat
-                        if is_final:
-                            asyncio.create_task(queue_fact_check_async(websocket, sentence))
+                            # SLOW LOOP: Queue fact check for finalized sentences
+                            if is_final:
+                                asyncio.create_task(queue_fact_check_async(websocket, sentence))
 
                 except Exception as e:
                     logger.error(f"Error processing Deepgram message: {e}")

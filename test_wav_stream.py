@@ -13,7 +13,7 @@ from datetime import datetime
 
 
 # WAV file path - UPDATE THIS to your WAV file location
-WAV_FILE_PATH = r"C:\Users\loizi\PycharmProjects\lauzhack-2025\test_data\audio.wav"
+WAV_FILE_PATH = "audio.wav"
 
 # Streaming configuration
 CHUNK_DURATION_MS = 100  # Send chunks every 100ms (simulates real-time)
