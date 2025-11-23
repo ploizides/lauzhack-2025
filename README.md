@@ -122,9 +122,8 @@ python test_wav_stream.py
 Based on Deepgram's ~16 seconds per "final sentence":
 
 ```python
-topic_update_threshold: int = 3        # 3 sentences = ~48s
-claim_selection_batch_size: int = 5    # 5 sentences = ~80s  
-image_update_threshold: int = 2        # 2 sentences = ~32s
+topic_update_threshold: int = 3        # 5 sentences
+claim_selection_batch_size: int = 5    # 10 sentences
 max_claims_per_batch: int = 2          # Max claims per batch
 ```
 
@@ -158,9 +157,9 @@ SEARCH_CONFIG = {
 2. **Audio chunks sent** → Real-time transcription
 3. **Transcript received** → Added to state buffer
 4. **Multi-loop processing**:
-   - Image updates (every 2 sentences)
-   - Topic updates (every 3 sentences)
-   - Claim selection (every 5 sentences)
+   
+   - Topic updates (every 5 sentences)
+   - Claim selection (every 10 sentences)
 5. **Results streamed** → Client receives updates via WebSocket
 
 ### Fact-Checking Pipeline
