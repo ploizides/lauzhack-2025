@@ -56,7 +56,7 @@ lauzhack-2025/
 
 ### Prerequisites
 
-- Python 3.11+
+- Python 3.11
 - API Keys:
   - [Deepgram](https://deepgram.com/) (speech-to-text)
   - [Together.ai](https://together.ai/) (LLM inference)
@@ -94,7 +94,7 @@ lauzhack-2025/
 python backend/run.py
 ```
 
-Server runs on **http://localhost:8765**
+Server runs on **http://localhost:8000**
 
 ### Testing with Audio File
 
