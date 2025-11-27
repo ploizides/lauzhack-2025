@@ -12,7 +12,7 @@ try:
     from ddgs import DDGS
 except ImportError:
     from duckduckgo_search import DDGS  # Fallback for older package name
-from together import Together
+from groq import Groq
 
 from backend.app.core.config import (
     settings,
@@ -33,7 +33,7 @@ class FactEngine:
     """
 
     def __init__(self):
-        self.client = Together(api_key=settings.together_api_key)
+        self.client = Groq(api_key=settings.groq_api_key)
         self.search_client = DDGS()
 
     async def _generate_search_query(self, claim: str) -> str:
@@ -71,7 +71,7 @@ Output ONLY the search query, nothing else."""
             response = await loop.run_in_executor(
                 None,
                 lambda: self.client.chat.completions.create(
-                    model=settings.together_model,
+                    model=settings.groq_model,
                     messages=[
                         {"role": "system", "content": "You are a search query optimization assistant."},
                         {"role": "user", "content": prompt},
@@ -120,7 +120,7 @@ Output ONLY the search query, nothing else."""
                 response = await loop.run_in_executor(
                     None,
                     lambda: self.client.chat.completions.create(
-                        model=settings.together_model,
+                        model=settings.groq_model,
                         messages=[
                             {
                                 "role": "system",
@@ -180,7 +180,7 @@ Output ONLY the search query, nothing else."""
             response = await loop.run_in_executor(
                 None,
                 lambda: self.client.chat.completions.create(
-                    model=settings.together_model,
+                    model=settings.groq_model,
                     messages=[
                         {
                             "role": "system",
@@ -327,7 +327,7 @@ Output ONLY the search query, nothing else."""
             response = await loop.run_in_executor(
                 None,
                 lambda: self.client.chat.completions.create(
-                    model=settings.together_model,
+                    model=settings.groq_model,
                     messages=[
                         {
                             "role": "system",

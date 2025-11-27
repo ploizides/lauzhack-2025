@@ -1,6 +1,6 @@
 # Real-Time Podcast AI Assistant
 
-A real-time AI assistant for podcast transcription, topic tracking, fact-checking, and intelligent image search. Built with FastAPI, Deepgram, and Together.ai.
+A real-time AI assistant for podcast transcription, topic tracking, fact-checking, and intelligent image search. Built with FastAPI, Deepgram, and Groq.
 
 ## Features
 
@@ -57,11 +57,14 @@ lauzhack-2025/
 ### Prerequisites
 
 - Python 3.11
+- Node.js 16+ (for frontend)
 - API Keys:
   - [Deepgram](https://deepgram.com/) (speech-to-text)
-  - [Together.ai](https://together.ai/) (LLM inference)
+  - [Groq](https://groq.com/) (LLM inference - free tier available)
 
 ### Installation
+
+**Backend Setup:**
 
 1. **Clone and navigate to project:**
    ```bash
@@ -73,7 +76,7 @@ lauzhack-2025/
    source env/bin/activate
    ```
 
-3. **Install dependencies** (if needed):
+3. **Install Python dependencies:**
    ```bash
    pip install -r backend/requirements.txt
    ```
@@ -83,18 +86,42 @@ lauzhack-2025/
    cd backend
    cp .env.example .env
    # Edit .env and add your API keys:
-   # DEEPGRAM_API_KEY=your_key_here
-   # TOGETHER_API_KEY=your_key_here
+   # DEEPGRAM_API_KEY=your_deepgram_key_here
+   # GROQ_API_KEY=your_groq_key_here
    ```
 
-### Running the Server
+**Frontend Setup:**
+
+1. **Navigate to frontend directory:**
+   ```bash
+   cd frontend
+   ```
+
+2. **Install Node dependencies:**
+   ```bash
+   npm install
+   ```
+
+### Running the Application
+
+**Start Backend Server:**
 
 ```bash
 # From project root with venv activated
+source env/bin/activate
 python backend/run.py
 ```
 
-Server runs on **http://localhost:8000**
+Backend runs on **http://localhost:8000**
+
+**Start Frontend (in a separate terminal):**
+
+```bash
+cd frontend
+npm start
+```
+
+Frontend runs on **http://localhost:3000** and will automatically open in your browser.
 
 ### Testing with Audio File
 
@@ -130,8 +157,10 @@ max_claims_per_batch: int = 2          # Max claims per batch
 ### LLM Configuration
 
 ```python
-together_model: str = "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo"
+groq_model: str = "llama-3.3-70b-versatile"  # Groq's Llama 3.3 70B model
 ```
+
+**Note:** The project was migrated from Together.ai to Groq API due to API key expiration after the hackathon. Groq offers a free tier with fast inference.
 
 ### Search Configuration
 
@@ -210,19 +239,39 @@ Server-side streaming creates `stream_output.json` with all events for analysis.
 
 ## Troubleshooting
 
-**Port already in use:**
+**Backend port already in use:**
 ```bash
-lsof -ti:8765 | xargs kill -9
+lsof -ti:8000 | xargs kill -9
 ```
 
-**Missing dependencies:**
+**Frontend port already in use:**
+```bash
+lsof -ti:3000 | xargs kill -9
+```
+
+**Missing Python dependencies:**
 ```bash
 source env/bin/activate
 pip install -r backend/requirements.txt
+pip install groq  # If Groq SDK is missing
+```
+
+**Missing Node dependencies:**
+```bash
+cd frontend
+rm -rf node_modules package-lock.json
+npm install
 ```
 
 **API key errors:**
-Check `backend/.env` file has valid keys.
+- Check `backend/.env` file has valid keys
+- Make sure `GROQ_API_KEY` is set (not `TOGETHER_API_KEY`)
+- Get free API key from [console.groq.com](https://console.groq.com/)
+
+**Safari WebSocket issues:**
+- Safari blocks WebSocket connections from `file://` URLs
+- Always serve frontend via HTTP (use `npm start`)
+- Never open `index.html` directly in browser
 
 ## License
 

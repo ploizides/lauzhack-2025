@@ -9,7 +9,7 @@ import logging
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 import numpy as np
-from together import Together
+from groq import Groq
 try:
     from ddgs import DDGS
 except ImportError:
@@ -28,7 +28,7 @@ class TopicEngine:
     """
 
     def __init__(self):
-        self.client = Together(api_key=settings.together_api_key)
+        self.client = Groq(api_key=settings.groq_api_key)
         self.embedding_cache: Dict[str, np.ndarray] = {}
         self.search_client = DDGS()
 
@@ -99,17 +99,22 @@ class TopicEngine:
         try:
             prompt = TOPIC_EXTRACTION_PROMPT.format(text=text)
 
-            response = self.client.chat.completions.create(
-                model=settings.together_model,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "You are a topic extraction assistant. Always respond in valid JSON format.",
-                    },
-                    {"role": "user", "content": prompt},
-                ],
-                temperature=0.3,
-                max_tokens=200,
+            # Run in executor since Groq client is synchronous
+            loop = asyncio.get_event_loop()
+            response = await loop.run_in_executor(
+                None,
+                lambda: self.client.chat.completions.create(
+                    model=settings.groq_model,
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": "You are a topic extraction assistant. Always respond in valid JSON format.",
+                        },
+                        {"role": "user", "content": prompt},
+                    ],
+                    temperature=0.3,
+                    max_tokens=200,
+                ),
             )
 
             content = response.choices[0].message.content.strip()

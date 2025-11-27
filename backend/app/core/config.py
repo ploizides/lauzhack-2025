@@ -18,7 +18,7 @@ class Settings(BaseSettings):
 
     # API Keys
     deepgram_api_key: str
-    together_api_key: str
+    groq_api_key: str
     huggingface_api_key: Optional[str] = None
 
     # Configuration Parameters
@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     max_claims_per_batch: int = 2  # max claims to select from each batch
 
     # Model Configuration
-    together_model: str = "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo"
+    groq_model: str = "llama-3.3-70b-versatile"  # Groq's Llama 3.3 70B model (updated)
 
     # Transcript Buffer Configuration
     max_buffer_size: int = 1000  # Increased to hold more segments
