@@ -259,7 +259,8 @@ Output ONLY the search query, nothing else."""
             blocked_domains = [
                 'porn', 'xxx', 'sex', 'adult', 'xvideos', 'pornhub', 
                 'xhamster', 'redtube', 'youporn', 'tube8', 'spankbang',
-                'xnxx', 'onlyfans', 'escort', 'casino', 'gambling'
+                'xnxx', 'onlyfans', 'escort', 'camgirl', 'hentai', 'erotic',
+                'fetish', 'bdsm'
             ]
             
             # Extract relevant fields and filter inappropriate URLs
