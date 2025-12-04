@@ -19,6 +19,7 @@ from backend.app.core.config import settings
 from backend.app.core.state_manager import state, TranscriptSegment
 from backend.app.engines.topic_engine import topic_engine
 from backend.app.engines.fact_engine import fact_engine
+from backend.app.engines.image_engine import image_engine
 from backend.app.services.stream_processor import stream_processor
 
 # Configure logging
@@ -27,6 +28,10 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+# Suppress binary/websocket debug logging
+logging.getLogger("websockets").setLevel(logging.WARNING)
+logging.getLogger("deepgram").setLevel(logging.WARNING)
 
 
 # Background task for fact-checking queue
@@ -417,6 +422,11 @@ async def websocket_endpoint(websocket: WebSocket):
 
                             # Add to state buffer
                             state.add_transcript_segment(segment)
+                            
+                            # Track sentences for image context (decoupled from topics)
+                            if is_final:
+                                state.image_sentences.append(sentence)
+                                state.image_update_count += 1
 
                             # Send transcript to client (schedule as task to avoid blocking)
                             asyncio.create_task(websocket.send_json(
@@ -431,10 +441,14 @@ async def websocket_endpoint(websocket: WebSocket):
 
                             logger.info(f"[{'FINAL' if is_final else 'PARTIAL'}] {sentence}")
 
-                            # Topic tracking (Fast Loop)
+                            # Topic tracking (Medium Loop)
                             if is_final and state.should_update_topics():
                                 finalized_text = state.consume_finalized_sentences()
                                 asyncio.create_task(update_topics_async(websocket, finalized_text))
+                            
+                            # Smart Image updates (Fast Loop - decoupled from topics!)
+                            if is_final and state.should_update_image():
+                                asyncio.create_task(update_images_async(websocket))
 
                             # Fact checking (Slow Loop - batched selection)
                             if is_final:
@@ -555,7 +569,7 @@ async def update_topics_async(websocket: WebSocket, text: str):
             # Get topic data
             topic_node = state.topic_tree.nodes[topic_id]["data"]
 
-            # Try to get image URL from topic_images (may not be available yet)
+            # Get image URL from topic_images (now guaranteed to be available)
             image_url = None
             for img_entry in reversed(state.topic_images):
                 if img_entry["topic_id"] == topic_id:
@@ -571,10 +585,46 @@ async def update_topics_async(websocket: WebSocket, text: str):
                     "total_topics": len(state.topic_tree.nodes),
                 }
             )
-            logger.info(f"Topic update sent: {topic_node.topic}")
+            logger.info(f"Topic update sent: {topic_node.topic} with image: {image_url}")
 
     except Exception as e:
         logger.error(f"Error updating topics: {e}")
+
+
+async def update_images_async(websocket: WebSocket):
+    """
+    Asynchronously update images based on conversation context (Fast Loop - decoupled from topics!).
+    
+    Uses smart extraction to prioritize:
+    - Historical figures (Einstein, Churchill, etc.)
+    - Specific events (Moon Landing 1969, etc.)
+    - Places and landmarks
+    - Visual concepts
+    Args:
+        websocket: WebSocket to send updates to
+    """
+    try:
+        print(f"🖼️  Triggering smart image update...")
+        await image_engine.search_and_update_smart_image()
+        
+        # Sync images to stream_processor results (for frontend polling) - only if streaming
+        if stream_processor.is_streaming:
+            stream_processor.sync_images()
+        
+        # Send image update to client immediately via WebSocket
+        if state.topic_images:
+            latest_image = state.topic_images[-1]
+            logger.info(f"Smart image updated: {latest_image['topic']} -> {latest_image['image_url']}")
+            
+            await websocket.send_json({
+                "type": "image_update",
+                "image_subject": latest_image['topic'],
+                "image_url": latest_image['image_url'],
+                "timestamp": datetime.now().isoformat()
+            })
+        
+    except Exception as e:
+        logger.error(f"Error updating images: {e}")
 
 
 async def batch_claim_selection_async(websocket: WebSocket, sentence: str):

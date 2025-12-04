@@ -173,6 +173,12 @@ class StreamProcessor:
     def get_results(self) -> Dict[str, Any]:
         """Get current results."""
         return self.results.copy()
+    
+    def sync_images(self) -> None:
+        """Sync topic_images from state to results (for smart image updates)."""
+        if self.is_streaming:
+            self.results["topic_images"] = state.topic_images.copy()
+            self._write_results()
 
     def save_session(self):
         """
@@ -294,6 +300,11 @@ class StreamProcessor:
 
                                 # Add to state buffer
                                 state.add_transcript_segment(segment)
+                                
+                                # Track sentences for image context (decoupled from topics)
+                                if is_final:
+                                    state.image_sentences.append(sentence)
+                                    state.image_update_count += 1
 
                                 # Add to results
                                 self.results["transcripts"].append({
@@ -321,6 +332,10 @@ class StreamProcessor:
                                 if is_final and state.should_update_topics():
                                     finalized_text = state.consume_finalized_sentences()
                                     asyncio.create_task(self._update_topics(finalized_text))
+                                
+                                # Smart Image updates (Fast Loop - decoupled from topics!)
+                                if is_final and state.should_update_image():
+                                    asyncio.create_task(self._update_images())
 
                                 # Fact checking (Slow Loop) - same as WebSocket
                                 if is_final:
@@ -492,6 +507,25 @@ class StreamProcessor:
 
         except Exception as e:
             logger.error(f"Error updating topics: {e}")
+
+    async def _update_images(self):
+        """Update images based on conversation context (Fast Loop - decoupled from topics!)."""
+        try:
+            from backend.app.engines.image_engine import image_engine
+            
+            print(f"🖼️  Triggering smart image update...")
+            await image_engine.search_and_update_smart_image()
+            
+            # Sync images to results immediately
+            self.sync_images()
+            
+            # Log the update
+            if state.topic_images:
+                latest_image = state.topic_images[-1]
+                logger.info(f"Smart image updated: {latest_image['topic']} -> {latest_image['image_url']}")
+        
+        except Exception as e:
+            logger.error(f"Error updating images: {e}")
 
     async def _queue_fact_check(self, sentence: str):
         """Queue a fact check (Slow Loop) - same as WebSocket endpoint."""

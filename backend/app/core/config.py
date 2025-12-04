@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     topic_update_threshold: int = 5  # finalized sentences before topic update
     claim_selection_batch_size: int = 10  # sentences to accumulate before selecting claims
     max_claims_per_batch: int = 2  # max claims to select from each batch
+    image_update_threshold: int = 3  # finalized sentences before image update (decoupled from topics)
 
     # Model Configuration
     groq_model: str = "llama-3.3-70b-versatile"  # Groq's Llama 3.3 70B model (updated)
@@ -162,6 +163,43 @@ Respond in JSON format:
 Examples:
 - "Let's talk about climate change effects" → topic: "Climate Change"
 - "The latest AI models are impressive" → topic: "AI Models"
+"""
+
+
+IMAGE_SUBJECT_EXTRACTION_PROMPT = """You are analyzing conversation context to identify the most visually relevant subject for an image search.
+
+Current Topic: {current_topic}
+Recent Conversation:
+{conversation_text}
+
+Your task: Identify the SINGLE most visually compelling subject that would benefit from an image.
+
+PRIORITY ORDER (choose the highest priority that applies):
+1. **Historical Figures**: Politicians, scientists, artists, leaders (e.g., "Einstein", "Marie Curie", "Churchill")
+2. **Specific Events**: Named historical events with dates (e.g., "Moon Landing 1969", "Fall of Berlin Wall 1989")
+3. **Landmarks/Places**: Specific locations mentioned (e.g., "Eiffel Tower", "Mount Everest", "Colosseum")
+4. **Scientific Concepts**: Visual phenomena or objects (e.g., "DNA structure", "Black hole", "Solar eclipse")
+5. **Current Topic**: Only if none of the above apply
+
+EXTRACTION RULES:
+- Focus on PROPER NOUNS (names, places, events)
+- Be SPECIFIC not generic ("Albert Einstein" not "physicist")
+- Include relevant dates/years if mentioned
+- Prefer subjects that have iconic visual representations
+- Return null if no good visual subject exists
+
+Respond in JSON format:
+{{
+    "image_subject": "specific subject name" or null,
+    "subject_type": "person|event|place|concept|topic" or null,
+    "search_keywords": ["keyword1", "keyword2", "keyword3"],
+    "reasoning": "brief explanation of why this subject was chosen"
+}}
+
+Examples:
+- "Einstein developed relativity theory" → {{"image_subject": "Albert Einstein", "subject_type": "person"}}
+- "The 1969 moon landing was historic" → {{"image_subject": "Apollo 11 Moon Landing 1969", "subject_type": "event"}}
+- "Discussion about general physics" → {{"image_subject": null}} (too generic)
 """
 
 

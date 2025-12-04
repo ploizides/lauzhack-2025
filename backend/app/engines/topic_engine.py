@@ -10,10 +10,6 @@ from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 import numpy as np
 from groq import Groq
-try:
-    from ddgs import DDGS
-except ImportError:
-    from duckduckgo_search import DDGS  # Fallback for older package name
 
 from backend.app.core.config import settings, TOPIC_EXTRACTION_PROMPT, TOPIC_CONFIG
 from backend.app.core.state_manager import state
@@ -30,61 +26,6 @@ class TopicEngine:
     def __init__(self):
         self.client = Groq(api_key=settings.groq_api_key)
         self.embedding_cache: Dict[str, np.ndarray] = {}
-        self.search_client = DDGS()
-
-    async def search_topic_image(self, topic: str, keywords: List[str]) -> Optional[str]:
-        """
-        Search for a relevant image for the topic.
-
-        Args:
-            topic: The topic name
-            keywords: Topic keywords to enhance search
-
-        Returns:
-            URL of the most relevant image, or None if search fails
-        """
-        try:
-            # Create search query from topic and keywords
-            search_terms = [topic] + keywords[:3]  # Use top 3 keywords
-            query = " ".join(search_terms)
-
-            logger.info(f"Searching images for: {query}")
-            print(f"🖼️  Searching image for: {query}")
-
-            # Run image search in thread pool
-            loop = asyncio.get_event_loop()
-            results = await loop.run_in_executor(
-                None,
-                lambda: list(
-                    self.search_client.images(
-                        query,  # Changed from keywords= to positional argument
-                        region="wt-wt",
-                        safesearch="moderate",
-                        max_results=3,
-                    )
-                ),
-            )
-
-            print(f"🔍 Image search returned {len(results) if results else 0} results")
-
-            if results and len(results) > 0:
-                # Return the first (most relevant) image URL
-                image_url = results[0].get("image")
-                print(f"   First result: {results[0]}")
-                if image_url:
-                    print(f"✅ Found image: {image_url[:80]}...")
-                    return image_url
-                else:
-                    print(f"❌ No 'image' key in result")
-
-            print(f"⚠️  No images found for: {query}")
-            logger.warning(f"No images found for: {query}")
-            return None
-
-        except Exception as e:
-            print(f"❌ Image search error: {e}")
-            logger.error(f"Image search failed: {e}")
-            return None
 
     async def extract_topic(self, text: str) -> Optional[Tuple[str, List[str]]]:
         """
@@ -296,8 +237,9 @@ class TopicEngine:
                 )
                 logger.info(f"New topic: {topic} (id={topic_id})")
 
-                # Search for image asynchronously (don't block)
-                asyncio.create_task(self._search_and_record_image(topic_id, topic, keywords))
+                # Search for image before returning (ensures image is ready)
+                from backend.app.engines.image_engine import image_engine
+                await image_engine.search_and_record_image(topic_id, topic, keywords)
 
                 return topic_id
             else:
@@ -309,26 +251,6 @@ class TopicEngine:
         except Exception as e:
             logger.error(f"Failed to update topic tree: {e}")
             return None
-
-    async def _search_and_record_image(self, topic_id: str, topic: str, keywords: List[str]) -> None:
-        """
-        Search for topic image and record it (called as background task).
-
-        Args:
-            topic_id: Topic ID
-            topic: Topic name
-            keywords: Topic keywords
-        """
-        try:
-            print(f"🔄 Starting image search task for: {topic}")
-            image_url = await self.search_topic_image(topic, keywords)
-            print(f"📝 Recording image for {topic_id}: {image_url}")
-            state.add_topic_image(topic_id, topic, image_url)
-            print(f"✅ Image recorded successfully")
-        except Exception as e:
-            print(f"❌ Failed to search/record image: {e}")
-            logger.error(f"Failed to search/record image: {e}")
-            state.add_topic_image(topic_id, topic, None)
 
     def get_topic_summary(self) -> Dict:
         """

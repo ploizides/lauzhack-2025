@@ -7,7 +7,7 @@ import asyncio
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Deque, Dict, List, Optional, Callable, Any
+from typing import Deque, Dict, List, Optional, Callable, Any, Tuple
 import networkx as nx
 
 from backend.app.core.config import settings
@@ -92,6 +92,10 @@ class StateManager:
 
         # Sentence accumulation for batched claim selection
         self.sentence_batch: List[str] = []
+        
+        # Image update tracking (decoupled from topics)
+        self.image_update_count: int = 0
+        self.image_sentences: List[str] = []  # Track sentences for image context
 
         # Fact Check Results - stored results for retrieval
         self.fact_results: List[FactCheckResult] = []
@@ -158,6 +162,37 @@ class StateManager:
         self.finalized_sentences.clear()
         self.finalized_count = 0
         return text
+    
+    def should_update_image(self) -> bool:
+        """
+        Check if we should search for a new image (decoupled from topics).
+        
+        Returns:
+            True if threshold reached
+        """
+        return self.image_update_count >= settings.image_update_threshold
+    
+    def get_image_context(self) -> Tuple[Optional[str], str]:
+        """
+        Get context for image search: current topic + recent sentences.
+        
+        Returns:
+            Tuple of (current_topic_name, recent_conversation_text)
+        """
+        # Get current topic name if available
+        current_topic = None
+        if self.current_topic_id and self.current_topic_id in self.topic_tree.nodes:
+            current_topic = self.topic_tree.nodes[self.current_topic_id]["data"].topic
+        
+        # Get last 3-6 sentences for context
+        context_sentences = self.image_sentences[-6:] if len(self.image_sentences) > 6 else self.image_sentences
+        conversation_text = " ".join(context_sentences)
+        
+        return current_topic, conversation_text
+    
+    def consume_image_update(self) -> None:
+        """Reset image update counter after processing."""
+        self.image_update_count = 0
 
     def can_perform_fact_check(self) -> bool:
         """
